@@ -5,7 +5,8 @@
   "main": "src/index.ts",
   "scripts": {
     "dev": "nodemon src/index.ts",
-    "start": "npx prisma generate && npx ts-node src/index.ts"
+    "postinstall": "node node_modules/prisma/build/index.js generate",
+    "start": "node --loader ts-node/esm src/index.ts"
   },
   "keywords": [],
   "author": "",
