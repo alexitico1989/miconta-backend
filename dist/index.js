@@ -4,15 +4,21 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
-const cors_1 = __importDefault(require("cors"));
 const dotenv_1 = __importDefault(require("dotenv"));
-// Cargar variables de entorno
+const prisma_1 = __importDefault(require("./utils/prisma"));
+// Importar rutas
+const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 3000;
-// Middleware
-app.use((0, cors_1.default)());
 app.use(express_1.default.json());
+// Headers CORS
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    next();
+});
 // Ruta de prueba
 app.get('/', (req, res) => {
     res.json({
@@ -21,7 +27,26 @@ app.get('/', (req, res) => {
         timestamp: new Date().toISOString()
     });
 });
+// Ruta test DB
+app.get('/test-db', async (req, res) => {
+    try {
+        const count = await prisma_1.default.usuario.count();
+        res.json({
+            message: 'Conexión a base de datos exitosa ✅',
+            usuarios: count,
+            database: 'Railway PostgreSQL'
+        });
+    }
+    catch (error) {
+        res.status(500).json({
+            message: 'Error conectando a base de datos ❌',
+            error: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
+// RUTAS API
+app.use('/api/auth', auth_routes_1.default);
 // Iniciar servidor
 app.listen(PORT, () => {
-    console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
+    console.log(`🚀 Servidor corriendo en http://localhost:3000`);
 });
