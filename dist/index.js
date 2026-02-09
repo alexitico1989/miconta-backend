@@ -8,6 +8,8 @@ const dotenv_1 = __importDefault(require("dotenv"));
 const prisma_1 = __importDefault(require("./utils/prisma"));
 // Importar rutas
 const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
+const negocio_routes_1 = __importDefault(require("./routes/negocio.routes"));
+const transaccion_routes_1 = __importDefault(require("./routes/transaccion.routes"));
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 3000;
@@ -24,7 +26,12 @@ app.get('/', (req, res) => {
     res.json({
         message: 'MiConta API funcionando ✅',
         version: '1.0.0',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        endpoints: {
+            auth: '/api/auth',
+            negocio: '/api/negocio',
+            transacciones: '/api/transacciones'
+        }
     });
 });
 // Ruta test DB
@@ -46,7 +53,9 @@ app.get('/test-db', async (req, res) => {
 });
 // RUTAS API
 app.use('/api/auth', auth_routes_1.default);
+app.use('/api/negocio', negocio_routes_1.default);
+app.use('/api/transacciones', transaccion_routes_1.default);
 // Iniciar servidor
 app.listen(PORT, () => {
-    console.log(`🚀 Servidor corriendo en http://localhost:3000`);
+    console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
 });

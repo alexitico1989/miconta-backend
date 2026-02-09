@@ -4,6 +4,8 @@ import prisma from './utils/prisma';
 
 // Importar rutas
 import authRoutes from './routes/auth.routes';
+import negocioRoutes from './routes/negocio.routes';
+import transaccionRoutes from './routes/transaccion.routes';
 
 dotenv.config();
 
@@ -25,7 +27,12 @@ app.get('/', (req: Request, res: Response) => {
   res.json({ 
     message: 'MiConta API funcionando ✅',
     version: '1.0.0',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    endpoints: {
+      auth: '/api/auth',
+      negocio: '/api/negocio',
+      transacciones: '/api/transacciones'
+    }
   });
 });
 
@@ -48,8 +55,10 @@ app.get('/test-db', async (req: Request, res: Response) => {
 
 // RUTAS API
 app.use('/api/auth', authRoutes);
+app.use('/api/negocio', negocioRoutes);
+app.use('/api/transacciones', transaccionRoutes);
 
 // Iniciar servidor
 app.listen(PORT, () => {
-  console.log(`🚀 Servidor corriendo en http://localhost:3000`);
+  console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
 });
