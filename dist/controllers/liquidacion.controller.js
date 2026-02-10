@@ -255,7 +255,7 @@ exports.generarArchivoPrevired = generarArchivoPrevired;
 const marcarComoPagada = async (req, res) => {
     try {
         const userId = req.userId;
-        const { id } = req.params;
+        const id = req.params.id;
         const { fechaPago } = req.body;
         // Verificar liquidación
         const liquidacion = await prisma_1.default.liquidacion.findUnique({

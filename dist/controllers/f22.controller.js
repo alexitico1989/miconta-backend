@@ -31,7 +31,7 @@ function calcularImpuestoGlobalComplementario(rentaLiquida) {
 const getF22 = async (req, res) => {
     try {
         const userId = req.userId;
-        const { anio } = req.params;
+        const anio = req.params.anio;
         const anioNum = parseInt(anio);
         // Obtener negocio
         const negocio = await prisma_1.default.negocio.findUnique({
@@ -177,7 +177,7 @@ exports.listarF22 = listarF22;
 const marcarPresentadoF22 = async (req, res) => {
     try {
         const userId = req.userId;
-        const { id } = req.params;
+        const id = req.params.id;
         const { folio } = req.body;
         // Verificar declaración
         const declaracion = await prisma_1.default.declaracionF22.findUnique({
@@ -222,7 +222,7 @@ exports.marcarPresentadoF22 = marcarPresentadoF22;
 const validarF22 = async (req, res) => {
     try {
         const userId = req.userId;
-        const { anio } = req.params;
+        const anio = req.params.anio;
         const anioNum = parseInt(anio);
         // Obtener negocio
         const negocio = await prisma_1.default.negocio.findUnique({

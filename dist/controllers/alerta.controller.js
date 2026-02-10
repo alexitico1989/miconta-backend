@@ -62,7 +62,7 @@ exports.getAlertas = getAlertas;
 const marcarComoLeida = async (req, res) => {
     try {
         const userId = req.userId;
-        const { id } = req.params;
+        const id = req.params.id;
         // Verificar alerta
         const alerta = await prisma_1.default.alerta.findUnique({
             where: { id },
@@ -104,7 +104,7 @@ exports.marcarComoLeida = marcarComoLeida;
 const marcarComoResuelta = async (req, res) => {
     try {
         const userId = req.userId;
-        const { id } = req.params;
+        const id = req.params.id;
         // Verificar alerta
         const alerta = await prisma_1.default.alerta.findUnique({
             where: { id },
@@ -147,7 +147,7 @@ exports.marcarComoResuelta = marcarComoResuelta;
 const deleteAlerta = async (req, res) => {
     try {
         const userId = req.userId;
-        const { id } = req.params;
+        const id = req.params.id;
         // Verificar alerta
         const alerta = await prisma_1.default.alerta.findUnique({
             where: { id },

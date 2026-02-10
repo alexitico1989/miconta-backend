@@ -201,7 +201,8 @@ exports.getDashboard = getDashboard;
 const getReporteMensual = async (req, res) => {
     try {
         const userId = req.userId;
-        const { mes, anio } = req.params;
+        const mes = req.params.mes;
+        const anio = req.params.anio;
         const mesNum = parseInt(mes);
         const anioNum = parseInt(anio);
         // Obtener negocio

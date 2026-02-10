@@ -9,7 +9,8 @@ const prisma_1 = __importDefault(require("../utils/prisma"));
 const getF29 = async (req, res) => {
     try {
         const userId = req.userId;
-        const { mes, anio } = req.params;
+        const mes = req.params.mes;
+        const anio = req.params.anio;
         // Validar
         const mesNum = parseInt(mes);
         const anioNum = parseInt(anio);
@@ -177,7 +178,7 @@ exports.listarF29 = listarF29;
 const marcarPresentado = async (req, res) => {
     try {
         const userId = req.userId;
-        const { id } = req.params;
+        const id = req.params.id;
         const { folio } = req.body;
         // Verificar declaración
         const declaracion = await prisma_1.default.declaracionF29.findUnique({
@@ -222,7 +223,7 @@ exports.marcarPresentado = marcarPresentado;
 const updateF29 = async (req, res) => {
     try {
         const userId = req.userId;
-        const { id } = req.params;
+        const id = req.params.id;
         const { ventasAfectas, ventasExentas, comprasAfectas, comprasExentas } = req.body;
         // Verificar declaración
         const declaracion = await prisma_1.default.declaracionF29.findUnique({

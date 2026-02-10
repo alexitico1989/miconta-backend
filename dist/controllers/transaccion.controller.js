@@ -5,15 +5,15 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteTransaccion = exports.getResumenMensual = exports.getTransacciones = exports.createTransaccion = void 0;
 const prisma_1 = __importDefault(require("../utils/prisma"));
-// CREAR TRANSACCIÓN (Venta o Compra)
+// Crear transacción
 const createTransaccion = async (req, res) => {
     try {
         const userId = req.userId;
-        const { tipo, fecha, montoTotal, exento, descripcion } = req.body;
-        // Validar campos
+        const { tipo, fecha, montoTotal, exento, descripcion, proveedor, numDocumento, fotoUrl } = req.body;
+        // Validar campos requeridos
         if (!tipo || !fecha || !montoTotal) {
             return res.status(400).json({
-                error: 'Tipo, fecha y monto son requeridos'
+                error: 'Tipo, fecha y montoTotal son requeridos'
             });
         }
         if (tipo !== 'venta' && tipo !== 'compra') {
@@ -21,24 +21,19 @@ const createTransaccion = async (req, res) => {
                 error: 'Tipo debe ser "venta" o "compra"'
             });
         }
-        // Obtener negocio del usuario
+        // Obtener negocio
         const negocio = await prisma_1.default.negocio.findUnique({
             where: { usuarioId: userId }
         });
         if (!negocio) {
             return res.status(404).json({
-                error: 'Debes crear tu negocio primero'
+                error: 'Negocio no encontrado'
             });
         }
-        // Calcular IVA
-        const isExento = exento || false;
-        let montoNeto;
-        let montoIva;
-        if (isExento) {
-            montoNeto = montoTotal;
-            montoIva = 0;
-        }
-        else {
+        // Calcular IVA (si no es exento)
+        let montoNeto = montoTotal;
+        let montoIva = 0;
+        if (!exento) {
             montoNeto = Math.round(montoTotal / 1.19);
             montoIva = montoTotal - montoNeto;
         }
@@ -51,12 +46,15 @@ const createTransaccion = async (req, res) => {
                 montoTotal,
                 montoNeto,
                 montoIva,
-                exento: isExento,
-                descripcion
+                exento: exento || false,
+                descripcion,
+                proveedor,
+                numDocumento,
+                fotoUrl
             }
         });
         res.status(201).json({
-            message: `${tipo === 'venta' ? 'Venta' : 'Compra'} registrada exitosamente`,
+            message: 'Transacción creada exitosamente',
             transaccion
         });
     }
@@ -68,11 +66,11 @@ const createTransaccion = async (req, res) => {
     }
 };
 exports.createTransaccion = createTransaccion;
-// OBTENER TRANSACCIONES
+// Listar transacciones
 const getTransacciones = async (req, res) => {
     try {
         const userId = req.userId;
-        const { tipo, mes, anio } = req.query;
+        const { tipo, fechaInicio, fechaFin, limit } = req.query;
         // Obtener negocio
         const negocio = await prisma_1.default.negocio.findUnique({
             where: { usuarioId: userId }
@@ -86,29 +84,39 @@ const getTransacciones = async (req, res) => {
         const where = {
             negocioId: negocio.id
         };
-        if (tipo && (tipo === 'venta' || tipo === 'compra')) {
+        if (tipo) {
             where.tipo = tipo;
         }
-        if (mes && anio) {
-            const mesNum = parseInt(mes);
-            const anioNum = parseInt(anio);
-            const fechaInicio = new Date(anioNum, mesNum - 1, 1);
-            const fechaFin = new Date(anioNum, mesNum, 0, 23, 59, 59);
-            where.fecha = {
-                gte: fechaInicio,
-                lte: fechaFin
-            };
+        if (fechaInicio || fechaFin) {
+            where.fecha = {};
+            if (fechaInicio)
+                where.fecha.gte = new Date(fechaInicio);
+            if (fechaFin)
+                where.fecha.lte = new Date(fechaFin);
         }
         // Obtener transacciones
         const transacciones = await prisma_1.default.transaccion.findMany({
             where,
             orderBy: {
                 fecha: 'desc'
-            }
+            },
+            take: limit ? parseInt(limit) : undefined
         });
+        // Calcular totales
+        const totalVentas = transacciones
+            .filter(t => t.tipo === 'venta')
+            .reduce((sum, t) => sum + t.montoTotal, 0);
+        const totalCompras = transacciones
+            .filter(t => t.tipo === 'compra')
+            .reduce((sum, t) => sum + t.montoTotal, 0);
         res.json({
             transacciones,
-            total: transacciones.length
+            total: transacciones.length,
+            resumen: {
+                totalVentas,
+                totalCompras,
+                balance: totalVentas - totalCompras
+            }
         });
     }
     catch (error) {
@@ -119,7 +127,7 @@ const getTransacciones = async (req, res) => {
     }
 };
 exports.getTransacciones = getTransacciones;
-// RESUMEN MENSUAL (para F29)
+// Obtener resumen mensual para F29
 const getResumenMensual = async (req, res) => {
     try {
         const userId = req.userId;
@@ -140,9 +148,10 @@ const getResumenMensual = async (req, res) => {
         }
         const mesNum = parseInt(mes);
         const anioNum = parseInt(anio);
+        // Calcular fechas del mes
         const fechaInicio = new Date(anioNum, mesNum - 1, 1);
         const fechaFin = new Date(anioNum, mesNum, 0, 23, 59, 59);
-        // Obtener ventas y compras del mes
+        // Obtener transacciones del mes
         const transacciones = await prisma_1.default.transaccion.findMany({
             where: {
                 negocioId: negocio.id,
@@ -152,47 +161,46 @@ const getResumenMensual = async (req, res) => {
                 }
             }
         });
-        // Calcular totales
+        // Calcular totales para F29
         const ventas = transacciones.filter(t => t.tipo === 'venta');
         const compras = transacciones.filter(t => t.tipo === 'compra');
-        const totalVentas = ventas.reduce((sum, v) => sum + v.montoTotal, 0);
-        const totalCompras = compras.reduce((sum, c) => sum + c.montoTotal, 0);
-        const ivaVentas = ventas.reduce((sum, v) => sum + v.montoIva, 0);
-        const ivaCompras = compras.reduce((sum, c) => sum + c.montoIva, 0);
-        const ivaPagar = ivaVentas - ivaCompras;
+        const ventasAfectas = ventas.filter(v => !v.exento).reduce((sum, v) => sum + v.montoTotal, 0);
+        const ventasExentas = ventas.filter(v => v.exento).reduce((sum, v) => sum + v.montoTotal, 0);
+        const comprasAfectas = compras.filter(c => !c.exento).reduce((sum, c) => sum + c.montoTotal, 0);
+        const comprasExentas = compras.filter(c => c.exento).reduce((sum, c) => sum + c.montoTotal, 0);
+        const ivaDebito = ventas.filter(v => !v.exento).reduce((sum, v) => sum + v.montoIva, 0);
+        const ivaCredito = compras.filter(c => !c.exento).reduce((sum, c) => sum + c.montoIva, 0);
         res.json({
             periodo: `${mes}/${anio}`,
-            ventas: {
-                cantidad: ventas.length,
-                totalBruto: totalVentas,
-                totalNeto: ventas.reduce((sum, v) => sum + v.montoNeto, 0),
-                iva: ivaVentas
+            transacciones: {
+                total: transacciones.length,
+                ventas: ventas.length,
+                compras: compras.length
             },
-            compras: {
-                cantidad: compras.length,
-                totalBruto: totalCompras,
-                totalNeto: compras.reduce((sum, c) => sum + c.montoNeto, 0),
-                iva: ivaCompras
-            },
-            resumen: {
-                ivaPagar: ivaPagar > 0 ? ivaPagar : 0,
-                aFavor: ivaPagar < 0 ? Math.abs(ivaPagar) : 0
+            montos: {
+                ventasAfectas,
+                ventasExentas,
+                comprasAfectas,
+                comprasExentas,
+                ivaDebito,
+                ivaCredito,
+                ivaDeterminado: ivaDebito - ivaCredito
             }
         });
     }
     catch (error) {
         console.error('Error en getResumenMensual:', error);
         res.status(500).json({
-            error: 'Error al obtener resumen'
+            error: 'Error al obtener resumen mensual'
         });
     }
 };
 exports.getResumenMensual = getResumenMensual;
-// ELIMINAR TRANSACCIÓN
+// Eliminar transacción
 const deleteTransaccion = async (req, res) => {
     try {
         const userId = req.userId;
-        const { id } = req.params;
+        const id = req.params.id;
         // Verificar que la transacción pertenezca al usuario
         const transaccion = await prisma_1.default.transaccion.findUnique({
             where: { id },

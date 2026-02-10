@@ -108,7 +108,7 @@ exports.createTrabajador = createTrabajador;
 const updateTrabajador = async (req, res) => {
     try {
         const userId = req.userId;
-        const { id } = req.params;
+        const id = req.params.id;
         const { nombre, apellidoPaterno, apellidoMaterno, fechaNacimiento, telefono, email, direccion, comuna, cargo, sueldoBase, afp, salud, isapre } = req.body;
         // Verificar trabajador
         const trabajador = await prisma_1.default.trabajador.findUnique({
@@ -163,7 +163,7 @@ exports.updateTrabajador = updateTrabajador;
 const darDeBajaTrabajador = async (req, res) => {
     try {
         const userId = req.userId;
-        const { id } = req.params;
+        const id = req.params.id;
         const { fechaSalida } = req.body;
         // Verificar trabajador
         const trabajador = await prisma_1.default.trabajador.findUnique({
@@ -207,7 +207,7 @@ exports.darDeBajaTrabajador = darDeBajaTrabajador;
 const getTrabajadorById = async (req, res) => {
     try {
         const userId = req.userId;
-        const { id } = req.params;
+        const id = req.params.id;
         // Obtener trabajador
         const trabajador = await prisma_1.default.trabajador.findUnique({
             where: { id },

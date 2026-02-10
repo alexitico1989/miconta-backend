@@ -100,7 +100,7 @@ exports.createProveedor = createProveedor;
 const updateProveedor = async (req, res) => {
     try {
         const userId = req.userId;
-        const { id } = req.params;
+        const id = req.params.id;
         const { nombre, rut, contacto, telefono, email, frecuenciaVisita, diaVisita, categoria, notas } = req.body;
         // Verificar proveedor
         const proveedor = await prisma_1.default.proveedor.findUnique({
@@ -151,7 +151,7 @@ exports.updateProveedor = updateProveedor;
 const registrarVisita = async (req, res) => {
     try {
         const userId = req.userId;
-        const { id } = req.params;
+        const id = req.params.id;
         // Verificar proveedor
         const proveedor = await prisma_1.default.proveedor.findUnique({
             where: { id },
@@ -201,7 +201,7 @@ exports.registrarVisita = registrarVisita;
 const deleteProveedor = async (req, res) => {
     try {
         const userId = req.userId;
-        const { id } = req.params;
+        const id = req.params.id;
         // Verificar proveedor
         const proveedor = await prisma_1.default.proveedor.findUnique({
             where: { id },
@@ -242,7 +242,7 @@ exports.deleteProveedor = deleteProveedor;
 const getProximasVisitas = async (req, res) => {
     try {
         const userId = req.userId;
-        const { dias } = req.query; // Días hacia adelante (default 7)
+        const dias = req.query.dias;
         // Obtener negocio
         const negocio = await prisma_1.default.negocio.findUnique({
             where: { usuarioId: userId }
@@ -290,7 +290,7 @@ exports.getProximasVisitas = getProximasVisitas;
 const generarPedidoSugerido = async (req, res) => {
     try {
         const userId = req.userId;
-        const { id } = req.params;
+        const id = req.params.id;
         // Verificar proveedor
         const proveedor = await prisma_1.default.proveedor.findUnique({
             where: { id },
