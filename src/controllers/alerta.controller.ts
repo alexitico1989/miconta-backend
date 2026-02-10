@@ -5,7 +5,7 @@ import prisma from '../utils/prisma';
 export const getAlertas = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const { leida, prioridad } = req.query;
+    const { leida, prioridad, limit, offset } = req.query;
 
     // Obtener negocio
     const negocio = await prisma.negocio.findUnique({
@@ -31,14 +31,23 @@ export const getAlertas = async (req: Request, res: Response) => {
       where.prioridad = prioridad as string;
     }
 
+    // Paginación
+    const take = limit ? parseInt(limit as string) : 50;
+    const skip = offset ? parseInt(offset as string) : 0;
+
     // Obtener alertas
-    const alertas = await prisma.alerta.findMany({
-      where,
-      orderBy: [
-        { prioridad: 'desc' },
-        { createdAt: 'desc' }
-      ]
-    });
+    const [alertas, total] = await Promise.all([
+      prisma.alerta.findMany({
+        where,
+        orderBy: [
+          { prioridad: 'desc' },
+          { createdAt: 'desc' }
+        ],
+        take,
+        skip
+      }),
+      prisma.alerta.count({ where })
+    ]);
 
     // Contar alertas no leídas
     const noLeidas = await prisma.alerta.count({
@@ -50,14 +59,20 @@ export const getAlertas = async (req: Request, res: Response) => {
 
     res.json({
       alertas,
-      total: alertas.length,
+      paginacion: {
+        total,
+        limit: take,
+        offset: skip,
+        hasMore: skip + alertas.length < total
+      },
       noLeidas
     });
 
   } catch (error) {
     console.error('Error en getAlertas:', error);
     res.status(500).json({
-      error: 'Error al obtener alertas'
+      error: 'Error al obtener alertas',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -104,7 +119,8 @@ export const marcarComoLeida = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en marcarComoLeida:', error);
     res.status(500).json({
-      error: 'Error al marcar alerta como leída'
+      error: 'Error al marcar alerta como leída',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -152,7 +168,8 @@ export const marcarComoResuelta = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en marcarComoResuelta:', error);
     res.status(500).json({
-      error: 'Error al marcar alerta como resuelta'
+      error: 'Error al marcar alerta como resuelta',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -195,7 +212,8 @@ export const deleteAlerta = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en deleteAlerta:', error);
     res.status(500).json({
-      error: 'Error al eliminar alerta'
+      error: 'Error al eliminar alerta',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -210,6 +228,14 @@ export const createAlerta = async (req: Request, res: Response) => {
     if (!tipo || !titulo || !mensaje) {
       return res.status(400).json({
         error: 'Tipo, título y mensaje son requeridos'
+      });
+    }
+
+    // Validar prioridad
+    const prioridadesValidas = ['baja', 'media', 'alta', 'urgente'];
+    if (prioridad && !prioridadesValidas.includes(prioridad)) {
+      return res.status(400).json({
+        error: 'Prioridad debe ser: baja, media, alta o urgente'
       });
     }
 
@@ -244,7 +270,8 @@ export const createAlerta = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en createAlerta:', error);
     res.status(500).json({
-      error: 'Error al crear alerta'
+      error: 'Error al crear alerta',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };

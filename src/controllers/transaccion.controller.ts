@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
+import { validarMonto } from '../utils/validators';
 
 // Crear transacción
 export const createTransaccion = async (req: Request, res: Response) => {
@@ -26,6 +27,14 @@ export const createTransaccion = async (req: Request, res: Response) => {
     if (tipo !== 'venta' && tipo !== 'compra') {
       return res.status(400).json({
         error: 'Tipo debe ser "venta" o "compra"'
+      });
+    }
+
+    // Validar monto
+    const validacionMonto = validarMonto(montoTotal);
+    if (!validacionMonto.valido) {
+      return res.status(400).json({
+        error: validacionMonto.error
       });
     }
 
@@ -74,7 +83,8 @@ export const createTransaccion = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en createTransaccion:', error);
     res.status(500).json({
-      error: 'Error al crear transacción'
+      error: 'Error al crear transacción',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -83,7 +93,7 @@ export const createTransaccion = async (req: Request, res: Response) => {
 export const getTransacciones = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const { tipo, fechaInicio, fechaFin, limit } = req.query;
+    const { tipo, fechaInicio, fechaFin, limit, offset } = req.query;
 
     // Obtener negocio
     const negocio = await prisma.negocio.findUnique({
@@ -111,14 +121,22 @@ export const getTransacciones = async (req: Request, res: Response) => {
       if (fechaFin) where.fecha.lte = new Date(fechaFin as string);
     }
 
+    // Paginación
+    const take = limit ? parseInt(limit as string) : 50; // Default 50
+    const skip = offset ? parseInt(offset as string) : 0;
+
     // Obtener transacciones
-    const transacciones = await prisma.transaccion.findMany({
-      where,
-      orderBy: {
-        fecha: 'desc'
-      },
-      take: limit ? parseInt(limit as string) : undefined
-    });
+    const [transacciones, total] = await Promise.all([
+      prisma.transaccion.findMany({
+        where,
+        orderBy: {
+          fecha: 'desc'
+        },
+        take,
+        skip
+      }),
+      prisma.transaccion.count({ where })
+    ]);
 
     // Calcular totales
     const totalVentas = transacciones
@@ -131,7 +149,12 @@ export const getTransacciones = async (req: Request, res: Response) => {
 
     res.json({
       transacciones,
-      total: transacciones.length,
+      paginacion: {
+        total,
+        limit: take,
+        offset: skip,
+        hasMore: skip + transacciones.length < total
+      },
       resumen: {
         totalVentas,
         totalCompras,
@@ -142,7 +165,8 @@ export const getTransacciones = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en getTransacciones:', error);
     res.status(500).json({
-      error: 'Error al obtener transacciones'
+      error: 'Error al obtener transacciones',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -221,7 +245,8 @@ export const getResumenMensual = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en getResumenMensual:', error);
     res.status(500).json({
-      error: 'Error al obtener resumen mensual'
+      error: 'Error al obtener resumen mensual',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -264,7 +289,8 @@ export const deleteTransaccion = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en deleteTransaccion:', error);
     res.status(500).json({
-      error: 'Error al eliminar transacción'
+      error: 'Error al eliminar transacción',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };

@@ -1,10 +1,12 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
+import { validarMonto, validarStock } from '../utils/validators';
 
 // LISTAR PRODUCTOS
 export const getProductos = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
+    const { limit, offset } = req.query;
 
     // Obtener negocio del usuario
     const negocio = await prisma.negocio.findUnique({
@@ -17,26 +19,46 @@ export const getProductos = async (req: Request, res: Response) => {
       });
     }
 
+    // Paginación
+    const take = limit ? parseInt(limit as string) : 50;
+    const skip = offset ? parseInt(offset as string) : 0;
+
     // Obtener productos
-    const productos = await prisma.producto.findMany({
-      where: {
-        negocioId: negocio.id,
-        activo: true
-      },
-      orderBy: {
-        nombre: 'asc'
-      }
-    });
+    const [productos, total] = await Promise.all([
+      prisma.producto.findMany({
+        where: {
+          negocioId: negocio.id,
+          activo: true
+        },
+        orderBy: {
+          nombre: 'asc'
+        },
+        take,
+        skip
+      }),
+      prisma.producto.count({
+        where: {
+          negocioId: negocio.id,
+          activo: true
+        }
+      })
+    ]);
 
     res.json({
       productos,
-      total: productos.length
+      paginacion: {
+        total,
+        limit: take,
+        offset: skip,
+        hasMore: skip + productos.length < total
+      }
     });
 
   } catch (error) {
     console.error('Error en getProductos:', error);
     res.status(500).json({
-      error: 'Error al obtener productos'
+      error: 'Error al obtener productos',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -63,6 +85,44 @@ export const createProducto = async (req: Request, res: Response) => {
       return res.status(400).json({
         error: 'Nombre es requerido'
       });
+    }
+
+    // Validar stock
+    if (stockActual !== undefined) {
+      const validacionStock = validarStock(stockActual);
+      if (!validacionStock.valido) {
+        return res.status(400).json({
+          error: validacionStock.error
+        });
+      }
+    }
+
+    if (stockMinimo !== undefined) {
+      const validacionStockMin = validarStock(stockMinimo);
+      if (!validacionStockMin.valido) {
+        return res.status(400).json({
+          error: validacionStockMin.error
+        });
+      }
+    }
+
+    // Validar precios
+    if (precioCompra !== undefined) {
+      const validacionPrecio = validarMonto(precioCompra);
+      if (!validacionPrecio.valido) {
+        return res.status(400).json({
+          error: 'Precio de compra: ' + validacionPrecio.error
+        });
+      }
+    }
+
+    if (precioVenta !== undefined) {
+      const validacionPrecio = validarMonto(precioVenta);
+      if (!validacionPrecio.valido) {
+        return res.status(400).json({
+          error: 'Precio de venta: ' + validacionPrecio.error
+        });
+      }
     }
 
     // Obtener negocio
@@ -115,7 +175,8 @@ export const createProducto = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en createProducto:', error);
     res.status(500).json({
-      error: 'Error al crear producto'
+      error: 'Error al crear producto',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -136,6 +197,35 @@ export const updateProducto = async (req: Request, res: Response) => {
       fotoUrl,
       notas
     } = req.body;
+
+    // Validar stock mínimo
+    if (stockMinimo !== undefined) {
+      const validacionStockMin = validarStock(stockMinimo);
+      if (!validacionStockMin.valido) {
+        return res.status(400).json({
+          error: validacionStockMin.error
+        });
+      }
+    }
+
+    // Validar precios
+    if (precioCompra !== undefined) {
+      const validacionPrecio = validarMonto(precioCompra);
+      if (!validacionPrecio.valido) {
+        return res.status(400).json({
+          error: 'Precio de compra: ' + validacionPrecio.error
+        });
+      }
+    }
+
+    if (precioVenta !== undefined) {
+      const validacionPrecio = validarMonto(precioVenta);
+      if (!validacionPrecio.valido) {
+        return res.status(400).json({
+          error: 'Precio de venta: ' + validacionPrecio.error
+        });
+      }
+    }
 
     // Verificar que el producto pertenezca al usuario
     const producto = await prisma.producto.findUnique({
@@ -181,7 +271,8 @@ export const updateProducto = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en updateProducto:', error);
     res.status(500).json({
-      error: 'Error al actualizar producto'
+      error: 'Error al actualizar producto',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -205,6 +296,14 @@ export const updateStock = async (req: Request, res: Response) => {
     if (tipo !== 'entrada' && tipo !== 'salida' && tipo !== 'ajuste') {
       return res.status(400).json({
         error: 'Tipo debe ser: entrada, salida o ajuste'
+      });
+    }
+
+    // Validar cantidad
+    const validacionCantidad = validarStock(cantidad);
+    if (!validacionCantidad.valido) {
+      return res.status(400).json({
+        error: validacionCantidad.error
       });
     }
 
@@ -292,7 +391,8 @@ export const updateStock = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en updateStock:', error);
     res.status(500).json({
-      error: 'Error al actualizar stock'
+      error: 'Error al actualizar stock',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -338,7 +438,8 @@ export const deleteProducto = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en deleteProducto:', error);
     res.status(500).json({
-      error: 'Error al eliminar producto'
+      error: 'Error al eliminar producto',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -381,7 +482,8 @@ export const getProductosStockBajo = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en getProductosStockBajo:', error);
     res.status(500).json({
-      error: 'Error al obtener productos'
+      error: 'Error al obtener productos',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };

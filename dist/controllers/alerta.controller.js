@@ -9,7 +9,7 @@ const prisma_1 = __importDefault(require("../utils/prisma"));
 const getAlertas = async (req, res) => {
     try {
         const userId = req.userId;
-        const { leida, prioridad } = req.query;
+        const { leida, prioridad, limit, offset } = req.query;
         // Obtener negocio
         const negocio = await prisma_1.default.negocio.findUnique({
             where: { usuarioId: userId }
@@ -29,14 +29,22 @@ const getAlertas = async (req, res) => {
         if (prioridad) {
             where.prioridad = prioridad;
         }
+        // Paginación
+        const take = limit ? parseInt(limit) : 50;
+        const skip = offset ? parseInt(offset) : 0;
         // Obtener alertas
-        const alertas = await prisma_1.default.alerta.findMany({
-            where,
-            orderBy: [
-                { prioridad: 'desc' },
-                { createdAt: 'desc' }
-            ]
-        });
+        const [alertas, total] = await Promise.all([
+            prisma_1.default.alerta.findMany({
+                where,
+                orderBy: [
+                    { prioridad: 'desc' },
+                    { createdAt: 'desc' }
+                ],
+                take,
+                skip
+            }),
+            prisma_1.default.alerta.count({ where })
+        ]);
         // Contar alertas no leídas
         const noLeidas = await prisma_1.default.alerta.count({
             where: {
@@ -46,14 +54,20 @@ const getAlertas = async (req, res) => {
         });
         res.json({
             alertas,
-            total: alertas.length,
+            paginacion: {
+                total,
+                limit: take,
+                offset: skip,
+                hasMore: skip + alertas.length < total
+            },
             noLeidas
         });
     }
     catch (error) {
         console.error('Error en getAlertas:', error);
         res.status(500).json({
-            error: 'Error al obtener alertas'
+            error: 'Error al obtener alertas',
+            detalle: error instanceof Error ? error.message : 'Error desconocido'
         });
     }
 };
@@ -95,7 +109,8 @@ const marcarComoLeida = async (req, res) => {
     catch (error) {
         console.error('Error en marcarComoLeida:', error);
         res.status(500).json({
-            error: 'Error al marcar alerta como leída'
+            error: 'Error al marcar alerta como leída',
+            detalle: error instanceof Error ? error.message : 'Error desconocido'
         });
     }
 };
@@ -138,7 +153,8 @@ const marcarComoResuelta = async (req, res) => {
     catch (error) {
         console.error('Error en marcarComoResuelta:', error);
         res.status(500).json({
-            error: 'Error al marcar alerta como resuelta'
+            error: 'Error al marcar alerta como resuelta',
+            detalle: error instanceof Error ? error.message : 'Error desconocido'
         });
     }
 };
@@ -176,7 +192,8 @@ const deleteAlerta = async (req, res) => {
     catch (error) {
         console.error('Error en deleteAlerta:', error);
         res.status(500).json({
-            error: 'Error al eliminar alerta'
+            error: 'Error al eliminar alerta',
+            detalle: error instanceof Error ? error.message : 'Error desconocido'
         });
     }
 };
@@ -190,6 +207,13 @@ const createAlerta = async (req, res) => {
         if (!tipo || !titulo || !mensaje) {
             return res.status(400).json({
                 error: 'Tipo, título y mensaje son requeridos'
+            });
+        }
+        // Validar prioridad
+        const prioridadesValidas = ['baja', 'media', 'alta', 'urgente'];
+        if (prioridad && !prioridadesValidas.includes(prioridad)) {
+            return res.status(400).json({
+                error: 'Prioridad debe ser: baja, media, alta o urgente'
             });
         }
         // Obtener negocio
@@ -220,7 +244,8 @@ const createAlerta = async (req, res) => {
     catch (error) {
         console.error('Error en createAlerta:', error);
         res.status(500).json({
-            error: 'Error al crear alerta'
+            error: 'Error al crear alerta',
+            detalle: error instanceof Error ? error.message : 'Error desconocido'
         });
     }
 };

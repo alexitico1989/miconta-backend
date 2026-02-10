@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
+import { validarMes, validarAnio } from '../utils/validators';
 
 // DASHBOARD PRINCIPAL
 export const getDashboard = async (req: Request, res: Response) => {
@@ -72,7 +73,7 @@ export const getDashboard = async (req: Request, res: Response) => {
     // PROYECCIÓN FIN DE MES
     const diasTranscurridos = hoy.getDate();
     const diasMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
-    const promedioVentaDiaria = totalVentasMes / diasTranscurridos;
+    const promedioVentaDiaria = diasTranscurridos > 0 ? totalVentasMes / diasTranscurridos : 0;
     const proyeccionFinMes = Math.round(promedioVentaDiaria * diasMes);
 
     // PRODUCTOS STOCK BAJO
@@ -209,7 +210,8 @@ export const getDashboard = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en getDashboard:', error);
     res.status(500).json({
-      error: 'Error al obtener dashboard'
+      error: 'Error al obtener dashboard',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -223,6 +225,21 @@ export const getReporteMensual = async (req: Request, res: Response) => {
 
     const mesNum = parseInt(mes);
     const anioNum = parseInt(anio);
+
+    // Validar mes y año
+    const validacionMes = validarMes(mesNum);
+    if (!validacionMes.valido) {
+      return res.status(400).json({
+        error: validacionMes.error
+      });
+    }
+
+    const validacionAnio = validarAnio(anioNum);
+    if (!validacionAnio.valido) {
+      return res.status(400).json({
+        error: validacionAnio.error
+      });
+    }
 
     // Obtener negocio
     const negocio = await prisma.negocio.findUnique({
@@ -267,12 +284,14 @@ export const getReporteMensual = async (req: Request, res: Response) => {
       }
     });
 
+    const diasMes = new Date(anioNum, mesNum, 0).getDate();
+
     res.json({
       periodo: `${mes}/${anio}`,
       ventas: {
         total: totalVentas,
         cantidad: ventas.length,
-        promedioDiario: Math.round(totalVentas / new Date(anioNum, mesNum, 0).getDate())
+        promedioDiario: Math.round(totalVentas / diasMes)
       },
       compras: {
         total: totalCompras,
@@ -292,7 +311,8 @@ export const getReporteMensual = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en getReporteMensual:', error);
     res.status(500).json({
-      error: 'Error al obtener reporte mensual'
+      error: 'Error al obtener reporte mensual',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
+import { validarMes, validarAnio } from '../utils/validators';
 
 // Porcentajes 2026 (actualizar según normativa)
 const PORCENTAJES = {
@@ -44,6 +45,39 @@ export const generarLiquidacion = async (req: Request, res: Response) => {
     if (!trabajadorId || !mes || !anio) {
       return res.status(400).json({
         error: 'Faltan campos requeridos: trabajadorId, mes, anio'
+      });
+    }
+
+    const validacionMes = validarMes(mes);
+    if (!validacionMes.valido) {
+      return res.status(400).json({
+        error: validacionMes.error
+      });
+    }
+
+    const validacionAnio = validarAnio(anio);
+    if (!validacionAnio.valido) {
+      return res.status(400).json({
+        error: validacionAnio.error
+      });
+    }
+
+    // Validar montos opcionales
+    if (horasExtra !== undefined && horasExtra < 0) {
+      return res.status(400).json({
+        error: 'Horas extra no puede ser negativo'
+      });
+    }
+
+    if (bonos !== undefined && bonos < 0) {
+      return res.status(400).json({
+        error: 'Bonos no puede ser negativo'
+      });
+    }
+
+    if (otrosDescuentos !== undefined && otrosDescuentos < 0) {
+      return res.status(400).json({
+        error: 'Otros descuentos no puede ser negativo'
       });
     }
 
@@ -132,7 +166,8 @@ export const generarLiquidacion = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en generarLiquidacion:', error);
     res.status(500).json({
-      error: 'Error al generar liquidación'
+      error: 'Error al generar liquidación',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -141,7 +176,7 @@ export const generarLiquidacion = async (req: Request, res: Response) => {
 export const getLiquidaciones = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const { mes, anio, trabajadorId } = req.query;
+    const { mes, anio, trabajadorId, limit, offset } = req.query;
 
     // Obtener negocio
     const negocio = await prisma.negocio.findUnique({
@@ -161,31 +196,66 @@ export const getLiquidaciones = async (req: Request, res: Response) => {
       }
     };
 
-    if (mes) where.mes = parseInt(mes as string);
-    if (anio) where.anio = parseInt(anio as string);
+    if (mes) {
+      const mesNum = parseInt(mes as string);
+      const validacionMes = validarMes(mesNum);
+      if (!validacionMes.valido) {
+        return res.status(400).json({
+          error: validacionMes.error
+        });
+      }
+      where.mes = mesNum;
+    }
+
+    if (anio) {
+      const anioNum = parseInt(anio as string);
+      const validacionAnio = validarAnio(anioNum);
+      if (!validacionAnio.valido) {
+        return res.status(400).json({
+          error: validacionAnio.error
+        });
+      }
+      where.anio = anioNum;
+    }
+
     if (trabajadorId) where.trabajadorId = trabajadorId as string;
 
+    // Paginación
+    const take = limit ? parseInt(limit as string) : 50;
+    const skip = offset ? parseInt(offset as string) : 0;
+
     // Obtener liquidaciones
-    const liquidaciones = await prisma.liquidacion.findMany({
-      where,
-      include: {
-        trabajador: true
-      },
-      orderBy: [
-        { anio: 'desc' },
-        { mes: 'desc' }
-      ]
-    });
+    const [liquidaciones, total] = await Promise.all([
+      prisma.liquidacion.findMany({
+        where,
+        include: {
+          trabajador: true
+        },
+        orderBy: [
+          { anio: 'desc' },
+          { mes: 'desc' }
+        ],
+        take,
+        skip
+      }),
+      prisma.liquidacion.count({ where })
+    ]);
 
     res.json({
       liquidaciones,
-      total: liquidaciones.length
+      paginacion: {
+        total,
+        limit: take,
+        offset: skip,
+        hasMore: skip + liquidaciones.length < total
+      }
     });
 
   } catch (error) {
     console.error('Error en getLiquidaciones:', error);
     res.status(500).json({
-      error: 'Error al obtener liquidaciones'
+      error: 'Error al obtener liquidaciones',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -200,6 +270,20 @@ export const generarArchivoPrevired = async (req: Request, res: Response) => {
     if (!mes || !anio) {
       return res.status(400).json({
         error: 'Mes y año son requeridos'
+      });
+    }
+
+    const validacionMes = validarMes(mes);
+    if (!validacionMes.valido) {
+      return res.status(400).json({
+        error: validacionMes.error
+      });
+    }
+
+    const validacionAnio = validarAnio(anio);
+    if (!validacionAnio.valido) {
+      return res.status(400).json({
+        error: validacionAnio.error
       });
     }
 
@@ -274,7 +358,8 @@ export const generarArchivoPrevired = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en generarArchivoPrevired:', error);
     res.status(500).json({
-      error: 'Error al generar archivo Previred'
+      error: 'Error al generar archivo Previred',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -327,7 +412,8 @@ export const marcarComoPagada = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en marcarComoPagada:', error);
     res.status(500).json({
-      error: 'Error al marcar liquidación como pagada'
+      error: 'Error al marcar liquidación como pagada',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };

@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.updateF29 = exports.marcarPresentado = exports.listarF29 = exports.getF29 = void 0;
 const prisma_1 = __importDefault(require("../utils/prisma"));
+const validators_1 = require("../utils/validators");
 // OBTENER/CALCULAR F29
 const getF29 = async (req, res) => {
     try {
@@ -14,9 +15,16 @@ const getF29 = async (req, res) => {
         // Validar
         const mesNum = parseInt(mes);
         const anioNum = parseInt(anio);
-        if (mesNum < 1 || mesNum > 12) {
+        const validacionMes = (0, validators_1.validarMes)(mesNum);
+        if (!validacionMes.valido) {
             return res.status(400).json({
-                error: 'Mes inválido'
+                error: validacionMes.error
+            });
+        }
+        const validacionAnio = (0, validators_1.validarAnio)(anioNum);
+        if (!validacionAnio.valido) {
+            return res.status(400).json({
+                error: validacionAnio.error
             });
         }
         // Obtener negocio
@@ -127,7 +135,8 @@ const getF29 = async (req, res) => {
     catch (error) {
         console.error('Error en getF29:', error);
         res.status(500).json({
-            error: 'Error al obtener F29'
+            error: 'Error al obtener F29',
+            detalle: error instanceof Error ? error.message : 'Error desconocido'
         });
     }
 };
@@ -151,7 +160,14 @@ const listarF29 = async (req, res) => {
             negocioId: negocio.id
         };
         if (anio) {
-            where.anio = parseInt(anio);
+            const anioNum = parseInt(anio);
+            const validacionAnio = (0, validators_1.validarAnio)(anioNum);
+            if (!validacionAnio.valido) {
+                return res.status(400).json({
+                    error: validacionAnio.error
+                });
+            }
+            where.anio = anioNum;
         }
         // Obtener declaraciones
         const declaraciones = await prisma_1.default.declaracionF29.findMany({
@@ -169,7 +185,8 @@ const listarF29 = async (req, res) => {
     catch (error) {
         console.error('Error en listarF29:', error);
         res.status(500).json({
-            error: 'Error al listar F29'
+            error: 'Error al listar F29',
+            detalle: error instanceof Error ? error.message : 'Error desconocido'
         });
     }
 };
@@ -214,7 +231,8 @@ const marcarPresentado = async (req, res) => {
     catch (error) {
         console.error('Error en marcarPresentado:', error);
         res.status(500).json({
-            error: 'Error al marcar F29 como presentado'
+            error: 'Error al marcar F29 como presentado',
+            detalle: error instanceof Error ? error.message : 'Error desconocido'
         });
     }
 };
@@ -277,7 +295,8 @@ const updateF29 = async (req, res) => {
     catch (error) {
         console.error('Error en updateF29:', error);
         res.status(500).json({
-            error: 'Error al actualizar F29'
+            error: 'Error al actualizar F29',
+            detalle: error instanceof Error ? error.message : 'Error desconocido'
         });
     }
 };

@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getReporteMensual = exports.getDashboard = void 0;
 const prisma_1 = __importDefault(require("../utils/prisma"));
+const validators_1 = require("../utils/validators");
 // DASHBOARD PRINCIPAL
 const getDashboard = async (req, res) => {
     try {
@@ -65,7 +66,7 @@ const getDashboard = async (req, res) => {
         // PROYECCIÓN FIN DE MES
         const diasTranscurridos = hoy.getDate();
         const diasMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
-        const promedioVentaDiaria = totalVentasMes / diasTranscurridos;
+        const promedioVentaDiaria = diasTranscurridos > 0 ? totalVentasMes / diasTranscurridos : 0;
         const proyeccionFinMes = Math.round(promedioVentaDiaria * diasMes);
         // PRODUCTOS STOCK BAJO
         const productosStockBajo = await prisma_1.default.producto.findMany({
@@ -192,7 +193,8 @@ const getDashboard = async (req, res) => {
     catch (error) {
         console.error('Error en getDashboard:', error);
         res.status(500).json({
-            error: 'Error al obtener dashboard'
+            error: 'Error al obtener dashboard',
+            detalle: error instanceof Error ? error.message : 'Error desconocido'
         });
     }
 };
@@ -205,6 +207,19 @@ const getReporteMensual = async (req, res) => {
         const anio = req.params.anio;
         const mesNum = parseInt(mes);
         const anioNum = parseInt(anio);
+        // Validar mes y año
+        const validacionMes = (0, validators_1.validarMes)(mesNum);
+        if (!validacionMes.valido) {
+            return res.status(400).json({
+                error: validacionMes.error
+            });
+        }
+        const validacionAnio = (0, validators_1.validarAnio)(anioNum);
+        if (!validacionAnio.valido) {
+            return res.status(400).json({
+                error: validacionAnio.error
+            });
+        }
         // Obtener negocio
         const negocio = await prisma_1.default.negocio.findUnique({
             where: { usuarioId: userId }
@@ -241,12 +256,13 @@ const getReporteMensual = async (req, res) => {
                 }
             }
         });
+        const diasMes = new Date(anioNum, mesNum, 0).getDate();
         res.json({
             periodo: `${mes}/${anio}`,
             ventas: {
                 total: totalVentas,
                 cantidad: ventas.length,
-                promedioDiario: Math.round(totalVentas / new Date(anioNum, mesNum, 0).getDate())
+                promedioDiario: Math.round(totalVentas / diasMes)
             },
             compras: {
                 total: totalCompras,
@@ -266,7 +282,8 @@ const getReporteMensual = async (req, res) => {
     catch (error) {
         console.error('Error en getReporteMensual:', error);
         res.status(500).json({
-            error: 'Error al obtener reporte mensual'
+            error: 'Error al obtener reporte mensual',
+            detalle: error instanceof Error ? error.message : 'Error desconocido'
         });
     }
 };

@@ -1,10 +1,13 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
+import { validarRut } from '../utils/rutValidator';
+import { validarEmail, validarTelefono } from '../utils/validators';
 
 // LISTAR PROVEEDORES
 export const getProveedores = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
+    const { limit, offset } = req.query;
 
     // Obtener negocio
     const negocio = await prisma.negocio.findUnique({
@@ -17,26 +20,46 @@ export const getProveedores = async (req: Request, res: Response) => {
       });
     }
 
+    // Paginación
+    const take = limit ? parseInt(limit as string) : 50;
+    const skip = offset ? parseInt(offset as string) : 0;
+
     // Obtener proveedores
-    const proveedores = await prisma.proveedor.findMany({
-      where: {
-        negocioId: negocio.id,
-        activo: true
-      },
-      orderBy: {
-        nombre: 'asc'
-      }
-    });
+    const [proveedores, total] = await Promise.all([
+      prisma.proveedor.findMany({
+        where: {
+          negocioId: negocio.id,
+          activo: true
+        },
+        orderBy: {
+          nombre: 'asc'
+        },
+        take,
+        skip
+      }),
+      prisma.proveedor.count({
+        where: {
+          negocioId: negocio.id,
+          activo: true
+        }
+      })
+    ]);
 
     res.json({
       proveedores,
-      total: proveedores.length
+      paginacion: {
+        total,
+        limit: take,
+        offset: skip,
+        hasMore: skip + proveedores.length < total
+      }
     });
 
   } catch (error) {
     console.error('Error en getProveedores:', error);
     res.status(500).json({
-      error: 'Error al obtener proveedores'
+      error: 'Error al obtener proveedores',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -61,6 +84,40 @@ export const createProveedor = async (req: Request, res: Response) => {
     if (!nombre) {
       return res.status(400).json({
         error: 'Nombre es requerido'
+      });
+    }
+
+    // Validar RUT si existe
+    if (rut && !validarRut(rut)) {
+      return res.status(400).json({
+        error: 'RUT inválido'
+      });
+    }
+
+    // Validar email si existe
+    if (email) {
+      const validacionEmail = validarEmail(email);
+      if (!validacionEmail.valido) {
+        return res.status(400).json({
+          error: validacionEmail.error
+        });
+      }
+    }
+
+    // Validar teléfono si existe
+    if (telefono) {
+      const validacionTelefono = validarTelefono(telefono);
+      if (!validacionTelefono.valido) {
+        return res.status(400).json({
+          error: validacionTelefono.error
+        });
+      }
+    }
+
+    // Validar frecuencia de visita
+    if (frecuenciaVisita !== undefined && frecuenciaVisita < 1) {
+      return res.status(400).json({
+        error: 'La frecuencia de visita debe ser mayor a 0 días'
       });
     }
 
@@ -107,7 +164,8 @@ export const createProveedor = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en createProveedor:', error);
     res.status(500).json({
-      error: 'Error al crear proveedor'
+      error: 'Error al crear proveedor',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -128,6 +186,40 @@ export const updateProveedor = async (req: Request, res: Response) => {
       categoria,
       notas
     } = req.body;
+
+    // Validar RUT si existe
+    if (rut && !validarRut(rut)) {
+      return res.status(400).json({
+        error: 'RUT inválido'
+      });
+    }
+
+    // Validar email si existe
+    if (email) {
+      const validacionEmail = validarEmail(email);
+      if (!validacionEmail.valido) {
+        return res.status(400).json({
+          error: validacionEmail.error
+        });
+      }
+    }
+
+    // Validar teléfono si existe
+    if (telefono) {
+      const validacionTelefono = validarTelefono(telefono);
+      if (!validacionTelefono.valido) {
+        return res.status(400).json({
+          error: validacionTelefono.error
+        });
+      }
+    }
+
+    // Validar frecuencia de visita
+    if (frecuenciaVisita !== undefined && frecuenciaVisita < 1) {
+      return res.status(400).json({
+        error: 'La frecuencia de visita debe ser mayor a 0 días'
+      });
+    }
 
     // Verificar proveedor
     const proveedor = await prisma.proveedor.findUnique({
@@ -173,7 +265,8 @@ export const updateProveedor = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en updateProveedor:', error);
     res.status(500).json({
-      error: 'Error al actualizar proveedor'
+      error: 'Error al actualizar proveedor',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -230,7 +323,8 @@ export const registrarVisita = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en registrarVisita:', error);
     res.status(500).json({
-      error: 'Error al registrar visita'
+      error: 'Error al registrar visita',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -276,7 +370,8 @@ export const deleteProveedor = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en deleteProveedor:', error);
     res.status(500).json({
-      error: 'Error al eliminar proveedor'
+      error: 'Error al eliminar proveedor',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -329,7 +424,8 @@ export const getProximasVisitas = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en getProximasVisitas:', error);
     res.status(500).json({
-      error: 'Error al obtener próximas visitas'
+      error: 'Error al obtener próximas visitas',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -402,7 +498,8 @@ export const generarPedidoSugerido = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en generarPedidoSugerido:', error);
     res.status(500).json({
-      error: 'Error al generar pedido'
+      error: 'Error al generar pedido',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };

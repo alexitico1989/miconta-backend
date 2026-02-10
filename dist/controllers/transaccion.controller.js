@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteTransaccion = exports.getResumenMensual = exports.getTransacciones = exports.createTransaccion = void 0;
 const prisma_1 = __importDefault(require("../utils/prisma"));
+const validators_1 = require("../utils/validators");
 // Crear transacción
 const createTransaccion = async (req, res) => {
     try {
@@ -19,6 +20,13 @@ const createTransaccion = async (req, res) => {
         if (tipo !== 'venta' && tipo !== 'compra') {
             return res.status(400).json({
                 error: 'Tipo debe ser "venta" o "compra"'
+            });
+        }
+        // Validar monto
+        const validacionMonto = (0, validators_1.validarMonto)(montoTotal);
+        if (!validacionMonto.valido) {
+            return res.status(400).json({
+                error: validacionMonto.error
             });
         }
         // Obtener negocio
@@ -61,7 +69,8 @@ const createTransaccion = async (req, res) => {
     catch (error) {
         console.error('Error en createTransaccion:', error);
         res.status(500).json({
-            error: 'Error al crear transacción'
+            error: 'Error al crear transacción',
+            detalle: error instanceof Error ? error.message : 'Error desconocido'
         });
     }
 };
@@ -70,7 +79,7 @@ exports.createTransaccion = createTransaccion;
 const getTransacciones = async (req, res) => {
     try {
         const userId = req.userId;
-        const { tipo, fechaInicio, fechaFin, limit } = req.query;
+        const { tipo, fechaInicio, fechaFin, limit, offset } = req.query;
         // Obtener negocio
         const negocio = await prisma_1.default.negocio.findUnique({
             where: { usuarioId: userId }
@@ -94,14 +103,21 @@ const getTransacciones = async (req, res) => {
             if (fechaFin)
                 where.fecha.lte = new Date(fechaFin);
         }
+        // Paginación
+        const take = limit ? parseInt(limit) : 50; // Default 50
+        const skip = offset ? parseInt(offset) : 0;
         // Obtener transacciones
-        const transacciones = await prisma_1.default.transaccion.findMany({
-            where,
-            orderBy: {
-                fecha: 'desc'
-            },
-            take: limit ? parseInt(limit) : undefined
-        });
+        const [transacciones, total] = await Promise.all([
+            prisma_1.default.transaccion.findMany({
+                where,
+                orderBy: {
+                    fecha: 'desc'
+                },
+                take,
+                skip
+            }),
+            prisma_1.default.transaccion.count({ where })
+        ]);
         // Calcular totales
         const totalVentas = transacciones
             .filter(t => t.tipo === 'venta')
@@ -111,7 +127,12 @@ const getTransacciones = async (req, res) => {
             .reduce((sum, t) => sum + t.montoTotal, 0);
         res.json({
             transacciones,
-            total: transacciones.length,
+            paginacion: {
+                total,
+                limit: take,
+                offset: skip,
+                hasMore: skip + transacciones.length < total
+            },
             resumen: {
                 totalVentas,
                 totalCompras,
@@ -122,7 +143,8 @@ const getTransacciones = async (req, res) => {
     catch (error) {
         console.error('Error en getTransacciones:', error);
         res.status(500).json({
-            error: 'Error al obtener transacciones'
+            error: 'Error al obtener transacciones',
+            detalle: error instanceof Error ? error.message : 'Error desconocido'
         });
     }
 };
@@ -191,7 +213,8 @@ const getResumenMensual = async (req, res) => {
     catch (error) {
         console.error('Error en getResumenMensual:', error);
         res.status(500).json({
-            error: 'Error al obtener resumen mensual'
+            error: 'Error al obtener resumen mensual',
+            detalle: error instanceof Error ? error.message : 'Error desconocido'
         });
     }
 };
@@ -229,7 +252,8 @@ const deleteTransaccion = async (req, res) => {
     catch (error) {
         console.error('Error en deleteTransaccion:', error);
         res.status(500).json({
-            error: 'Error al eliminar transacción'
+            error: 'Error al eliminar transacción',
+            detalle: error instanceof Error ? error.message : 'Error desconocido'
         });
     }
 };

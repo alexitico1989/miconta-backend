@@ -8,6 +8,8 @@ const router = (0, express_1.Router)();
 router.use(auth_middleware_1.authenticateToken);
 // GET /api/negocio - Obtener negocio del usuario
 router.get('/', negocio_controller_1.getNegocio);
-// POST /api/negocio - Crear/actualizar negocio
-router.post('/', negocio_controller_1.upsertNegocio);
+// POST /api/negocio - Crear negocio
+router.post('/', negocio_controller_1.createNegocio);
+// PUT /api/negocio - Actualizar negocio
+router.put('/', negocio_controller_1.updateNegocio);
 exports.default = router;

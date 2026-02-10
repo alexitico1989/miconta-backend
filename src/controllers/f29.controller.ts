@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
+import { validarMes, validarAnio } from '../utils/validators';
 
 // OBTENER/CALCULAR F29
 export const getF29 = async (req: Request, res: Response) => {
@@ -12,9 +13,17 @@ export const getF29 = async (req: Request, res: Response) => {
     const mesNum = parseInt(mes);
     const anioNum = parseInt(anio);
 
-    if (mesNum < 1 || mesNum > 12) {
+    const validacionMes = validarMes(mesNum);
+    if (!validacionMes.valido) {
       return res.status(400).json({
-        error: 'Mes inválido'
+        error: validacionMes.error
+      });
+    }
+
+    const validacionAnio = validarAnio(anioNum);
+    if (!validacionAnio.valido) {
+      return res.status(400).json({
+        error: validacionAnio.error
       });
     }
 
@@ -142,7 +151,8 @@ export const getF29 = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en getF29:', error);
     res.status(500).json({
-      error: 'Error al obtener F29'
+      error: 'Error al obtener F29',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -170,7 +180,14 @@ export const listarF29 = async (req: Request, res: Response) => {
     };
 
     if (anio) {
-      where.anio = parseInt(anio as string);
+      const anioNum = parseInt(anio as string);
+      const validacionAnio = validarAnio(anioNum);
+      if (!validacionAnio.valido) {
+        return res.status(400).json({
+          error: validacionAnio.error
+        });
+      }
+      where.anio = anioNum;
     }
 
     // Obtener declaraciones
@@ -190,7 +207,8 @@ export const listarF29 = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en listarF29:', error);
     res.status(500).json({
-      error: 'Error al listar F29'
+      error: 'Error al listar F29',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -240,7 +258,8 @@ export const marcarPresentado = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en marcarPresentado:', error);
     res.status(500).json({
-      error: 'Error al marcar F29 como presentado'
+      error: 'Error al marcar F29 como presentado',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -317,7 +336,8 @@ export const updateF29 = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en updateF29:', error);
     res.status(500).json({
-      error: 'Error al actualizar F29'
+      error: 'Error al actualizar F29',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };

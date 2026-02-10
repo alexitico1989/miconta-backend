@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
+import { validarAnio } from '../utils/validators';
 
 // Tabla impuesto Global Complementario 2026 (actualizar según normativa)
 const UF_2026 = 37800;
@@ -8,7 +9,7 @@ const TABLA_IGC = [
   { desde: 0, hasta: 13.5 * UF_2026, tasa: 0, rebaja: 0 },
   { desde: 13.5 * UF_2026, hasta: 30 * UF_2026, tasa: 0.04, rebaja: 0.04 * 13.5 * UF_2026 },
   { desde: 30 * UF_2026, hasta: 50 * UF_2026, tasa: 0.08, rebaja: 0.08 * 30 * UF_2026 - (0.04 * 13.5 * UF_2026) },
-  { desde: 50 * UF_2026, hasta: 70 * UF_2026, tasa: 0.135, rebaja: 0.135 * 50 * UF_2026 },
+  { desde: 50 * UF_2026, hasta: 70 * UF_2026, tasa: 0.135, rebaja: 0.135 * 50 * UF_2026 - (0.08 * 30 * UF_2026 - (0.04 * 13.5 * UF_2026)) },
   { desde: 70 * UF_2026, hasta: 90 * UF_2026, tasa: 0.23, rebaja: 0.23 * 70 * UF_2026 },
   { desde: 90 * UF_2026, hasta: 120 * UF_2026, tasa: 0.304, rebaja: 0.304 * 90 * UF_2026 },
   { desde: 120 * UF_2026, hasta: 150 * UF_2026, tasa: 0.35, rebaja: 0.35 * 120 * UF_2026 },
@@ -33,6 +34,13 @@ export const getF22 = async (req: Request, res: Response) => {
     const anio = req.params.anio as string;
 
     const anioNum = parseInt(anio);
+
+    const validacionAnio = validarAnio(anioNum);
+    if (!validacionAnio.valido) {
+      return res.status(400).json({
+        error: validacionAnio.error
+      });
+    }
 
     // Obtener negocio
     const negocio = await prisma.negocio.findUnique({
@@ -145,7 +153,8 @@ export const getF22 = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en getF22:', error);
     res.status(500).json({
-      error: 'Error al obtener F22'
+      error: 'Error al obtener F22',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -184,7 +193,8 @@ export const listarF22 = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en listarF22:', error);
     res.status(500).json({
-      error: 'Error al listar F22'
+      error: 'Error al listar F22',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -234,7 +244,8 @@ export const marcarPresentadoF22 = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en marcarPresentadoF22:', error);
     res.status(500).json({
-      error: 'Error al marcar F22 como presentado'
+      error: 'Error al marcar F22 como presentado',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -246,6 +257,13 @@ export const validarF22 = async (req: Request, res: Response) => {
     const anio = req.params.anio as string;
 
     const anioNum = parseInt(anio);
+
+    const validacionAnio = validarAnio(anioNum);
+    if (!validacionAnio.valido) {
+      return res.status(400).json({
+        error: validacionAnio.error
+      });
+    }
 
     // Obtener negocio
     const negocio = await prisma.negocio.findUnique({
@@ -293,7 +311,8 @@ export const validarF22 = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en validarF22:', error);
     res.status(500).json({
-      error: 'Error al validar F22'
+      error: 'Error al validar F22',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };

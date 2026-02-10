@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { upsertNegocio, getNegocio } from '../controllers/negocio.controller';
+import { createNegocio, getNegocio, updateNegocio } from '../controllers/negocio.controller';
 import { authenticateToken } from '../middleware/auth.middleware';
 
 const router = Router();
@@ -10,7 +10,10 @@ router.use(authenticateToken);
 // GET /api/negocio - Obtener negocio del usuario
 router.get('/', getNegocio);
 
-// POST /api/negocio - Crear/actualizar negocio
-router.post('/', upsertNegocio);
+// POST /api/negocio - Crear negocio
+router.post('/', createNegocio);
+
+// PUT /api/negocio - Actualizar negocio
+router.put('/', updateNegocio);
 
 export default router;

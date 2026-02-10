@@ -1,10 +1,13 @@
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
+import { validarRut } from '../utils/rutValidator';
+import { validarEmail, validarTelefono } from '../utils/validators';
 
 // LISTAR TRABAJADORES
 export const getTrabajadores = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
+    const { limit, offset } = req.query;
 
     // Obtener negocio
     const negocio = await prisma.negocio.findUnique({
@@ -17,26 +20,46 @@ export const getTrabajadores = async (req: Request, res: Response) => {
       });
     }
 
+    // Paginación
+    const take = limit ? parseInt(limit as string) : 50;
+    const skip = offset ? parseInt(offset as string) : 0;
+
     // Obtener trabajadores
-    const trabajadores = await prisma.trabajador.findMany({
-      where: {
-        negocioId: negocio.id,
-        activo: true
-      },
-      orderBy: {
-        nombre: 'asc'
-      }
-    });
+    const [trabajadores, total] = await Promise.all([
+      prisma.trabajador.findMany({
+        where: {
+          negocioId: negocio.id,
+          activo: true
+        },
+        orderBy: {
+          nombre: 'asc'
+        },
+        take,
+        skip
+      }),
+      prisma.trabajador.count({
+        where: {
+          negocioId: negocio.id,
+          activo: true
+        }
+      })
+    ]);
 
     res.json({
       trabajadores,
-      total: trabajadores.length
+      paginacion: {
+        total,
+        limit: take,
+        offset: skip,
+        hasMore: skip + trabajadores.length < total
+      }
     });
 
   } catch (error) {
     console.error('Error en getTrabajadores:', error);
     res.status(500).json({
-      error: 'Error al obtener trabajadores'
+      error: 'Error al obtener trabajadores',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -67,6 +90,40 @@ export const createTrabajador = async (req: Request, res: Response) => {
     if (!rut || !nombre || !apellidoPaterno || !apellidoMaterno || !fechaIngreso || !sueldoBase || !afp || !salud) {
       return res.status(400).json({
         error: 'Faltan campos requeridos: rut, nombre, apellidos, fechaIngreso, sueldoBase, afp, salud'
+      });
+    }
+
+    // Validar RUT
+    if (!validarRut(rut)) {
+      return res.status(400).json({
+        error: 'RUT inválido'
+      });
+    }
+
+    // Validar email si existe
+    if (email) {
+      const validacionEmail = validarEmail(email);
+      if (!validacionEmail.valido) {
+        return res.status(400).json({
+          error: validacionEmail.error
+        });
+      }
+    }
+
+    // Validar teléfono si existe
+    if (telefono) {
+      const validacionTelefono = validarTelefono(telefono);
+      if (!validacionTelefono.valido) {
+        return res.status(400).json({
+          error: validacionTelefono.error
+        });
+      }
+    }
+
+    // Validar sueldo base
+    if (sueldoBase <= 0) {
+      return res.status(400).json({
+        error: 'El sueldo base debe ser mayor a 0'
       });
     }
 
@@ -122,7 +179,8 @@ export const createTrabajador = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en createTrabajador:', error);
     res.status(500).json({
-      error: 'Error al crear trabajador'
+      error: 'Error al crear trabajador',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -147,6 +205,33 @@ export const updateTrabajador = async (req: Request, res: Response) => {
       salud,
       isapre
     } = req.body;
+
+    // Validar email si existe
+    if (email) {
+      const validacionEmail = validarEmail(email);
+      if (!validacionEmail.valido) {
+        return res.status(400).json({
+          error: validacionEmail.error
+        });
+      }
+    }
+
+    // Validar teléfono si existe
+    if (telefono) {
+      const validacionTelefono = validarTelefono(telefono);
+      if (!validacionTelefono.valido) {
+        return res.status(400).json({
+          error: validacionTelefono.error
+        });
+      }
+    }
+
+    // Validar sueldo base si se actualiza
+    if (sueldoBase !== undefined && sueldoBase <= 0) {
+      return res.status(400).json({
+        error: 'El sueldo base debe ser mayor a 0'
+      });
+    }
 
     // Verificar trabajador
     const trabajador = await prisma.trabajador.findUnique({
@@ -196,7 +281,8 @@ export const updateTrabajador = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en updateTrabajador:', error);
     res.status(500).json({
-      error: 'Error al actualizar trabajador'
+      error: 'Error al actualizar trabajador',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -245,7 +331,8 @@ export const darDeBajaTrabajador = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en darDeBajaTrabajador:', error);
     res.status(500).json({
-      error: 'Error al dar de baja trabajador'
+      error: 'Error al dar de baja trabajador',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
@@ -287,7 +374,8 @@ export const getTrabajadorById = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error en getTrabajadorById:', error);
     res.status(500).json({
-      error: 'Error al obtener trabajador'
+      error: 'Error al obtener trabajador',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
 };
