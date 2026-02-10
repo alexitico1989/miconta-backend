@@ -6,7 +6,7 @@ import { validarMonto, validarStock } from '../utils/validators';
 export const getProductos = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const { limit, offset } = req.query;
+    const { limit, offset, buscar } = req.query;
 
     // Obtener negocio del usuario
     const negocio = await prisma.negocio.findUnique({
@@ -19,6 +19,19 @@ export const getProductos = async (req: Request, res: Response) => {
       });
     }
 
+    // Construir filtro de búsqueda
+    const where: any = {
+      negocioId: negocio.id,
+      activo: true
+    };
+
+    if (buscar) {
+      where.OR = [
+        { nombre: { contains: buscar as string, mode: 'insensitive' } },
+        { codigo: { contains: buscar as string, mode: 'insensitive' } }
+      ];
+    }
+
     // Paginación
     const take = limit ? parseInt(limit as string) : 50;
     const skip = offset ? parseInt(offset as string) : 0;
@@ -26,22 +39,14 @@ export const getProductos = async (req: Request, res: Response) => {
     // Obtener productos
     const [productos, total] = await Promise.all([
       prisma.producto.findMany({
-        where: {
-          negocioId: negocio.id,
-          activo: true
-        },
+        where,
         orderBy: {
           nombre: 'asc'
         },
         take,
         skip
       }),
-      prisma.producto.count({
-        where: {
-          negocioId: negocio.id,
-          activo: true
-        }
-      })
+      prisma.producto.count({ where })
     ]);
 
     res.json({
@@ -58,6 +63,51 @@ export const getProductos = async (req: Request, res: Response) => {
     console.error('Error en getProductos:', error);
     res.status(500).json({
       error: 'Error al obtener productos',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
+    });
+  }
+};
+
+// OBTENER PRODUCTO POR ID
+export const getProductoById = async (req: Request, res: Response) => {
+  try {
+    const userId = req.userId!;
+    const id = req.params.id as string;
+
+    // Verificar que el producto pertenezca al usuario
+    const producto = await prisma.producto.findUnique({
+      where: { id },
+      include: {
+        negocio: true,
+        movimientos: {
+          orderBy: {
+            fecha: 'desc'
+          },
+          take: 10 // Últimos 10 movimientos
+        }
+      }
+    });
+
+    if (!producto) {
+      return res.status(404).json({
+        error: 'Producto no encontrado'
+      });
+    }
+
+    if (producto.negocio.usuarioId !== userId) {
+      return res.status(403).json({
+        error: 'No tienes permiso para ver este producto'
+      });
+    }
+
+    res.json({
+      producto
+    });
+
+  } catch (error) {
+    console.error('Error en getProductoById:', error);
+    res.status(500).json({
+      error: 'Error al obtener producto',
       detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
@@ -277,7 +327,7 @@ export const updateProducto = async (req: Request, res: Response) => {
   }
 };
 
-// ACTUALIZAR STOCK
+// ACTUALIZAR STOCK (MANUAL - para ajustes)
 export const updateStock = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
@@ -460,23 +510,18 @@ export const getProductosStockBajo = async (req: Request, res: Response) => {
       });
     }
 
-    // Obtener productos con stock bajo
-    const productos = await prisma.producto.findMany({
-      where: {
-        negocioId: negocio.id,
-        activo: true,
-        stockActual: {
-          lte: prisma.producto.fields.stockMinimo
-        }
-      },
-      orderBy: {
-        stockActual: 'asc'
-      }
-    });
+    // Obtener productos con stock bajo usando SQL raw
+    const productos = await prisma.$queryRaw`
+      SELECT * FROM productos
+      WHERE "negocioId" = ${negocio.id}
+      AND activo = true
+      AND "stockActual" <= "stockMinimo"
+      ORDER BY "stockActual" ASC
+    `;
 
     res.json({
       productos,
-      total: productos.length
+      total: Array.isArray(productos) ? productos.length : 0
     });
 
   } catch (error) {

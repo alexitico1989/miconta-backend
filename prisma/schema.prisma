@@ -96,19 +96,46 @@ model Transaccion {
   // Detalles
   descripcion  String?
   proveedor    String? // Nombre proveedor (si es compra)
+  cliente      String? // Nombre cliente (si es venta)
   numDocumento String? // Número boleta/factura
   fotoUrl      String? // Foto boleta (opcional)
+  metodoPago   String? // efectivo, transferencia, tarjeta, credito
 
   // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relaciones
-  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Cascade)
+  negocio  Negocio              @relation(fields: [negocioId], references: [id], onDelete: Cascade)
+  detalles DetalleTransaccion[]
 
   @@index([negocioId, fecha])
   @@index([tipo])
   @@map("transacciones")
+}
+
+// ============================================
+// 3.5 DETALLE TRANSACCIÓN (Productos por transacción)
+// ============================================
+model DetalleTransaccion {
+  id            String @id @default(uuid())
+  transaccionId String
+  productoId    String
+
+  cantidad       Int
+  precioUnitario Int
+  subtotal       Int
+
+  // Timestamps
+  createdAt DateTime @default(now())
+
+  // Relaciones
+  transaccion Transaccion @relation(fields: [transaccionId], references: [id], onDelete: Cascade)
+  producto    Producto    @relation(fields: [productoId], references: [id])
+
+  @@index([transaccionId])
+  @@index([productoId])
+  @@map("detalles_transaccion")
 }
 
 // ============================================
@@ -141,8 +168,9 @@ model Producto {
   updatedAt DateTime @updatedAt
 
   // Relaciones
-  negocio     Negocio           @relation(fields: [negocioId], references: [id], onDelete: Cascade)
-  movimientos MovimientoStock[]
+  negocio             Negocio              @relation(fields: [negocioId], references: [id], onDelete: Cascade)
+  movimientos         MovimientoStock[]
+  detallesTransaccion DetalleTransaccion[]
 
   @@index([negocioId])
   @@map("productos")
