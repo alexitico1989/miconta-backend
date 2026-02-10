@@ -10,6 +10,14 @@ const prisma_1 = __importDefault(require("./utils/prisma"));
 const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
 const negocio_routes_1 = __importDefault(require("./routes/negocio.routes"));
 const transaccion_routes_1 = __importDefault(require("./routes/transaccion.routes"));
+const producto_routes_1 = __importDefault(require("./routes/producto.routes"));
+const proveedor_routes_1 = __importDefault(require("./routes/proveedor.routes"));
+const trabajador_routes_1 = __importDefault(require("./routes/trabajador.routes"));
+const liquidacion_routes_1 = __importDefault(require("./routes/liquidacion.routes"));
+const f29_routes_1 = __importDefault(require("./routes/f29.routes"));
+const f22_routes_1 = __importDefault(require("./routes/f22.routes"));
+const alerta_routes_1 = __importDefault(require("./routes/alerta.routes"));
+const dashboard_routes_1 = __importDefault(require("./routes/dashboard.routes"));
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 3000;
@@ -25,12 +33,20 @@ app.use((req, res, next) => {
 app.get('/', (req, res) => {
     res.json({
         message: 'MiConta API funcionando ✅',
-        version: '1.0.0',
+        version: '2.0.0',
         timestamp: new Date().toISOString(),
         endpoints: {
             auth: '/api/auth',
             negocio: '/api/negocio',
-            transacciones: '/api/transacciones'
+            transacciones: '/api/transacciones',
+            productos: '/api/productos',
+            proveedores: '/api/proveedores',
+            trabajadores: '/api/trabajadores',
+            liquidaciones: '/api/liquidaciones',
+            f29: '/api/f29',
+            f22: '/api/f22',
+            alertas: '/api/alertas',
+            dashboard: '/api/dashboard'
         }
     });
 });
@@ -55,6 +71,14 @@ app.get('/test-db', async (req, res) => {
 app.use('/api/auth', auth_routes_1.default);
 app.use('/api/negocio', negocio_routes_1.default);
 app.use('/api/transacciones', transaccion_routes_1.default);
+app.use('/api/productos', producto_routes_1.default);
+app.use('/api/proveedores', proveedor_routes_1.default);
+app.use('/api/trabajadores', trabajador_routes_1.default);
+app.use('/api/liquidaciones', liquidacion_routes_1.default);
+app.use('/api/f29', f29_routes_1.default);
+app.use('/api/f22', f22_routes_1.default);
+app.use('/api/alertas', alerta_routes_1.default);
+app.use('/api/dashboard', dashboard_routes_1.default);
 // Iniciar servidor
 app.listen(PORT, () => {
     console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
