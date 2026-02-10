@@ -6,6 +6,14 @@ import prisma from './utils/prisma';
 import authRoutes from './routes/auth.routes';
 import negocioRoutes from './routes/negocio.routes';
 import transaccionRoutes from './routes/transaccion.routes';
+import productoRoutes from './routes/producto.routes';
+import proveedorRoutes from './routes/proveedor.routes';
+import trabajadorRoutes from './routes/trabajador.routes';
+import liquidacionRoutes from './routes/liquidacion.routes';
+import f29Routes from './routes/f29.routes';
+import f22Routes from './routes/f22.routes';
+import alertaRoutes from './routes/alerta.routes';
+import dashboardRoutes from './routes/dashboard.routes';
 
 dotenv.config();
 
@@ -26,12 +34,20 @@ app.use((req, res, next) => {
 app.get('/', (req: Request, res: Response) => {
   res.json({ 
     message: 'MiConta API funcionando ✅',
-    version: '1.0.0',
+    version: '2.0.0',
     timestamp: new Date().toISOString(),
     endpoints: {
       auth: '/api/auth',
       negocio: '/api/negocio',
-      transacciones: '/api/transacciones'
+      transacciones: '/api/transacciones',
+      productos: '/api/productos',
+      proveedores: '/api/proveedores',
+      trabajadores: '/api/trabajadores',
+      liquidaciones: '/api/liquidaciones',
+      f29: '/api/f29',
+      f22: '/api/f22',
+      alertas: '/api/alertas',
+      dashboard: '/api/dashboard'
     }
   });
 });
@@ -57,6 +73,14 @@ app.get('/test-db', async (req: Request, res: Response) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/negocio', negocioRoutes);
 app.use('/api/transacciones', transaccionRoutes);
+app.use('/api/productos', productoRoutes);
+app.use('/api/proveedores', proveedorRoutes);
+app.use('/api/trabajadores', trabajadorRoutes);
+app.use('/api/liquidaciones', liquidacionRoutes);
+app.use('/api/f29', f29Routes);
+app.use('/api/f22', f22Routes);
+app.use('/api/alertas', alertaRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 // Iniciar servidor
 app.listen(PORT, () => {
