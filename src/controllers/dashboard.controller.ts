@@ -218,7 +218,8 @@ export const getDashboard = async (req: Request, res: Response) => {
 export const getReporteMensual = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const { mes, anio } = req.params;
+    const mes = req.params.mes as string;
+    const anio = req.params.anio as string;
 
     const mesNum = parseInt(mes);
     const anioNum = parseInt(anio);

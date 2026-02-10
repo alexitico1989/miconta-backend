@@ -131,7 +131,7 @@ export const createTrabajador = async (req: Request, res: Response) => {
 export const updateTrabajador = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const { id } = req.params;
+    const id = req.params.id as string;
     const {
       nombre,
       apellidoPaterno,
@@ -205,7 +205,7 @@ export const updateTrabajador = async (req: Request, res: Response) => {
 export const darDeBajaTrabajador = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const { id } = req.params;
+    const id = req.params.id as string;
     const { fechaSalida } = req.body;
 
     // Verificar trabajador
@@ -254,7 +254,7 @@ export const darDeBajaTrabajador = async (req: Request, res: Response) => {
 export const getTrabajadorById = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     // Obtener trabajador
     const trabajador = await prisma.trabajador.findUnique({

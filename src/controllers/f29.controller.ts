@@ -5,7 +5,8 @@ import prisma from '../utils/prisma';
 export const getF29 = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const { mes, anio } = req.params;
+    const mes = req.params.mes as string;
+    const anio = req.params.anio as string;
 
     // Validar
     const mesNum = parseInt(mes);
@@ -198,7 +199,7 @@ export const listarF29 = async (req: Request, res: Response) => {
 export const marcarPresentado = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const { id } = req.params;
+    const id = req.params.id as string;
     const { folio } = req.body;
 
     // Verificar declaración
@@ -248,7 +249,7 @@ export const marcarPresentado = async (req: Request, res: Response) => {
 export const updateF29 = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const { id } = req.params;
+    const id = req.params.id as string;
     const {
       ventasAfectas,
       ventasExentas,

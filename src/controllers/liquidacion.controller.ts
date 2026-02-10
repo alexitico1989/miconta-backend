@@ -283,7 +283,7 @@ export const generarArchivoPrevired = async (req: Request, res: Response) => {
 export const marcarComoPagada = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const { id } = req.params;
+    const id = req.params.id as string;
     const { fechaPago } = req.body;
 
     // Verificar liquidación

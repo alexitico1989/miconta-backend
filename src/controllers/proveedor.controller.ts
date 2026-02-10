@@ -116,7 +116,7 @@ export const createProveedor = async (req: Request, res: Response) => {
 export const updateProveedor = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const { id } = req.params;
+    const id = req.params.id as string;
     const {
       nombre,
       rut,
@@ -182,7 +182,7 @@ export const updateProveedor = async (req: Request, res: Response) => {
 export const registrarVisita = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     // Verificar proveedor
     const proveedor = await prisma.proveedor.findUnique({
@@ -239,7 +239,7 @@ export const registrarVisita = async (req: Request, res: Response) => {
 export const deleteProveedor = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     // Verificar proveedor
     const proveedor = await prisma.proveedor.findUnique({
@@ -285,7 +285,7 @@ export const deleteProveedor = async (req: Request, res: Response) => {
 export const getProximasVisitas = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const { dias } = req.query; // Días hacia adelante (default 7)
+    const dias = req.query.dias as string;
 
     // Obtener negocio
     const negocio = await prisma.negocio.findUnique({
@@ -300,7 +300,7 @@ export const getProximasVisitas = async (req: Request, res: Response) => {
 
     // Calcular fecha límite
     const hoy = new Date();
-    const diasAdelante = dias ? parseInt(dias as string) : 7;
+    const diasAdelante = dias ? parseInt(dias) : 7;
     const fechaLimite = new Date(hoy);
     fechaLimite.setDate(fechaLimite.getDate() + diasAdelante);
 
@@ -338,7 +338,7 @@ export const getProximasVisitas = async (req: Request, res: Response) => {
 export const generarPedidoSugerido = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     // Verificar proveedor
     const proveedor = await prisma.proveedor.findUnique({

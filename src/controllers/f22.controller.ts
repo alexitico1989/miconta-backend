@@ -30,7 +30,7 @@ function calcularImpuestoGlobalComplementario(rentaLiquida: number): number {
 export const getF22 = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const { anio } = req.params;
+    const anio = req.params.anio as string;
 
     const anioNum = parseInt(anio);
 
@@ -193,7 +193,7 @@ export const listarF22 = async (req: Request, res: Response) => {
 export const marcarPresentadoF22 = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const { id } = req.params;
+    const id = req.params.id as string;
     const { folio } = req.body;
 
     // Verificar declaración
@@ -243,7 +243,7 @@ export const marcarPresentadoF22 = async (req: Request, res: Response) => {
 export const validarF22 = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const { anio } = req.params;
+    const anio = req.params.anio as string;
 
     const anioNum = parseInt(anio);
 

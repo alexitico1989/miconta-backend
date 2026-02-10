@@ -124,7 +124,7 @@ export const createProducto = async (req: Request, res: Response) => {
 export const updateProducto = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const { id } = req.params;
+    const id = req.params.id as string;
     const {
       nombre,
       codigo,
@@ -190,8 +190,10 @@ export const updateProducto = async (req: Request, res: Response) => {
 export const updateStock = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const { id } = req.params;
-    const { cantidad, tipo, motivo } = req.body;
+    const id = req.params.id as string;
+    const cantidad = parseInt(req.body.cantidad);
+    const tipo = req.body.tipo as string;
+    const motivo = req.body.motivo as string;
 
     // Validar
     if (!cantidad || !tipo) {
@@ -299,7 +301,7 @@ export const updateStock = async (req: Request, res: Response) => {
 export const deleteProducto = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     // Verificar producto
     const producto = await prisma.producto.findUnique({
