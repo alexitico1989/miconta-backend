@@ -70,6 +70,38 @@ export const getDashboard = async (req: Request, res: Response) => {
 
     const totalVentasMes = ventasMes.reduce((sum, v) => sum + v.montoTotal, 0);
 
+    // ============================================
+    // COMPRAS (AGREGADO)
+    // ============================================
+    
+    // COMPRAS HOY
+    const comprasHoy = await prisma.transaccion.findMany({
+      where: {
+        negocioId: negocio.id,
+        tipo: 'compra',
+        fecha: {
+          gte: inicioHoy,
+          lte: finHoy
+        }
+      }
+    });
+
+    const totalComprasHoy = comprasHoy.reduce((sum, c) => sum + c.montoTotal, 0);
+
+    // COMPRAS MES
+    const comprasMes = await prisma.transaccion.findMany({
+      where: {
+        negocioId: negocio.id,
+        tipo: 'compra',
+        fecha: {
+          gte: inicioMes,
+          lte: finMes
+        }
+      }
+    });
+
+    const totalComprasMes = comprasMes.reduce((sum, c) => sum + c.montoTotal, 0);
+
     // PROYECCIÓN FIN DE MES
     const diasTranscurridos = hoy.getDate();
     const diasMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
@@ -77,19 +109,14 @@ export const getDashboard = async (req: Request, res: Response) => {
     const proyeccionFinMes = Math.round(promedioVentaDiaria * diasMes);
 
     // PRODUCTOS STOCK BAJO
-    const productosStockBajo = await prisma.producto.findMany({
-      where: {
-        negocioId: negocio.id,
-        activo: true,
-        stockActual: {
-          lte: prisma.producto.fields.stockMinimo
-        }
-      },
-      take: 5,
-      orderBy: {
-        stockActual: 'asc'
-      }
-    });
+    const productosStockBajo = await prisma.$queryRaw<any[]>`
+      SELECT * FROM productos
+      WHERE "negocioId" = ${negocio.id}
+      AND activo = true
+      AND "stockActual" <= "stockMinimo"
+      ORDER BY "stockActual" ASC
+      LIMIT 5
+    `;
 
     // PRÓXIMAS VISITAS PROVEEDORES
     const fechaLimite = new Date(hoy);
@@ -179,6 +206,16 @@ export const getDashboard = async (req: Request, res: Response) => {
           total: totalVentasMes,
           cantidad: ventasMes.length,
           proyeccionFinMes
+        }
+      },
+      compras: {  // ← AGREGADO
+        hoy: {
+          total: totalComprasHoy,
+          cantidad: comprasHoy.length
+        },
+        mes: {
+          total: totalComprasMes,
+          cantidad: comprasMes.length
         }
       },
       stock: {
