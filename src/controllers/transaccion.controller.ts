@@ -24,7 +24,7 @@ export const createTransaccion = async (req: Request, res: Response) => {
       return res.status(400).json({
         error: 'Tipo y fecha son requeridos'
       });
-    }
+    } 
 
     if (tipo !== 'venta' && tipo !== 'compra') {
       return res.status(400).json({
