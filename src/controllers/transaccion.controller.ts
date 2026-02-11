@@ -1,3 +1,4 @@
+// VERSIÓN 2.0 - CON PRODUCTOS
 import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import { validarMonto } from '../utils/validators';
