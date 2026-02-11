@@ -8,12 +8,12 @@ export const createTransaccion = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
 
-     // ===== AGREGAR ESTO =====
+    // ===== DEBUG LOGS =====
     console.log('=== REQUEST BODY ===');
     console.log(JSON.stringify(req.body, null, 2));
     console.log('=== USER ID ===');
     console.log(userId);
-    // ===== FIN AGREGADO =====
+    // ===== FIN DEBUG =====
     
     const {
       tipo,
@@ -31,9 +31,9 @@ export const createTransaccion = async (req: Request, res: Response) => {
     // Validar campos requeridos
     if (!tipo || !fecha) {
       return res.status(400).json({
-        error: 'Tipo y fecha son requeridos'
+        error: 'Tipo y fecha son requeridos (v2.0)'
       });
-    } 
+    }
 
     if (tipo !== 'venta' && tipo !== 'compra') {
       return res.status(400).json({
