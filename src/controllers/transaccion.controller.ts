@@ -6,6 +6,14 @@ import { validarMonto } from '../utils/validators';
 export const createTransaccion = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
+
+     // ===== AGREGAR ESTO =====
+    console.log('=== REQUEST BODY ===');
+    console.log(JSON.stringify(req.body, null, 2));
+    console.log('=== USER ID ===');
+    console.log(userId);
+    // ===== FIN AGREGADO =====
+    
     const {
       tipo,
       fecha,
