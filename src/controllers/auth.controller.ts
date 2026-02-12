@@ -200,3 +200,73 @@ export const getProfile = async (req: Request, res: Response) => {
     });
   }
 };
+
+// ACTUALIZAR PERFIL
+export const updateProfile = async (req: Request, res: Response) => {
+  try {
+    const userId = req.userId!;
+    const { nombre, email, telefono } = req.body;
+
+    // Validar que al menos haya un campo para actualizar
+    if (!nombre && !email && !telefono) {
+      return res.status(400).json({
+        error: 'No hay datos para actualizar'
+      });
+    }
+
+    // Validar email si se proporciona
+    if (email) {
+      const validacionEmail = validarEmail(email);
+      if (!validacionEmail.valido) {
+        return res.status(400).json({
+          error: validacionEmail.error
+        });
+      }
+
+      // Verificar que el nuevo email no esté en uso por otro usuario
+      const usuarioExistente = await prisma.usuario.findUnique({
+        where: { email }
+      });
+
+      if (usuarioExistente && usuarioExistente.id !== userId) {
+        return res.status(400).json({
+          error: 'El email ya está registrado por otro usuario'
+        });
+      }
+    }
+
+    // Construir objeto de actualización
+    const updateData: any = {};
+    if (nombre !== undefined) updateData.nombre = nombre;
+    if (email !== undefined) updateData.email = email;
+    if (telefono !== undefined) updateData.telefono = telefono;
+
+    // Actualizar usuario
+    const usuario = await prisma.usuario.update({
+      where: { id: userId },
+      data: updateData,
+      select: {
+        id: true,
+        email: true,
+        nombre: true,
+        telefono: true,
+        plan: true,
+        trialHasta: true,
+        estado: true,
+        createdAt: true
+      }
+    });
+
+    res.json({
+      message: 'Perfil actualizado exitosamente',
+      usuario
+    });
+
+  } catch (error) {
+    console.error('Error en updateProfile:', error);
+    res.status(500).json({
+      error: 'Error al actualizar perfil',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
+    });
+  }
+};
