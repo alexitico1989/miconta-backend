@@ -57,7 +57,7 @@ model Negocio {
   region    String?
 
   // Datos tributarios
-  ventasMensualesAprox String?
+  ventasMensualesAprox Int?
   regimenTributario    String  @default("propyme") // propyme, general
 
   // Timestamps
