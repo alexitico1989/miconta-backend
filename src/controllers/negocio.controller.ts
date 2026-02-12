@@ -118,6 +118,13 @@ export const updateNegocio = async (req: Request, res: Response) => {
       regimenTributario
     } = req.body;
 
+    // Validar que al menos haya un campo para actualizar
+    if (!nombreNegocio && !rutNegocio && !tipo && !direccion && !comuna && !telefono && ventasMensualesAprox === undefined && !regimenTributario) {
+      return res.status(400).json({
+        error: 'No hay datos para actualizar'
+      });
+    }
+
     // Validar RUT del negocio si se actualiza
     if (rutNegocio && !validarRut(rutNegocio)) {
       return res.status(400).json({
@@ -126,9 +133,9 @@ export const updateNegocio = async (req: Request, res: Response) => {
     }
 
     // Validar ventas mensuales
-    if (ventasMensualesAprox !== undefined && ventasMensualesAprox < 0) {
+    if (ventasMensualesAprox !== undefined && (ventasMensualesAprox < 0 || isNaN(ventasMensualesAprox))) {
       return res.status(400).json({
-        error: 'Ventas mensuales no puede ser negativo'
+        error: 'Ventas mensuales inválidas'
       });
     }
 
@@ -143,18 +150,22 @@ export const updateNegocio = async (req: Request, res: Response) => {
       });
     }
 
+    // Construir objeto de datos solo con campos definidos
+    const updateData: any = {};
+    
+    if (nombreNegocio !== undefined) updateData.nombreNegocio = nombreNegocio;
+    if (rutNegocio !== undefined) updateData.rutNegocio = rutNegocio;
+    if (tipo !== undefined) updateData.tipo = tipo;
+    if (direccion !== undefined) updateData.direccion = direccion;
+    if (comuna !== undefined) updateData.comuna = comuna;
+    if (telefono !== undefined) updateData.telefono = telefono;
+    if (ventasMensualesAprox !== undefined) updateData.ventasMensualesAprox = ventasMensualesAprox;
+    if (regimenTributario !== undefined) updateData.regimenTributario = regimenTributario;
+
     // Actualizar negocio
     const negocio = await prisma.negocio.update({
       where: { usuarioId: userId },
-      data: {
-        nombreNegocio,
-        rutNegocio,
-        tipo,
-        direccion,
-        comuna,
-        ventasMensualesAprox,
-        regimenTributario
-      }
+      data: updateData
     });
 
     res.json({
