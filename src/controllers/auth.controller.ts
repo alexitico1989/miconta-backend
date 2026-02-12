@@ -9,7 +9,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'miconta-secret-2026';
 // REGISTRO
 export const register = async (req: Request, res: Response) => {
   try {
-    const { email, password, nombre } = req.body;
+    const { email, password, nombre, telefono } = req.body;
 
     // Validar campos requeridos
     if (!email || !password) {
@@ -57,6 +57,7 @@ export const register = async (req: Request, res: Response) => {
         email,
         password: passwordHash,
         nombre,
+        telefono: telefono || null,
         plan: 'trial',
         trialHasta,
         estado: 'activo'
