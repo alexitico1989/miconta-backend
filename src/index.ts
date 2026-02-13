@@ -1,6 +1,7 @@
 import express, { Express, Request, Response } from 'express';
 import dotenv from 'dotenv';
 import prisma from './utils/prisma';
+import clienteRoutes from './routes/cliente.routes';
 
 // Importar rutas
 import authRoutes from './routes/auth.routes';
@@ -81,6 +82,7 @@ app.use('/api/f29', f29Routes);
 app.use('/api/f22', f22Routes);
 app.use('/api/alertas', alertaRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/clientes', clienteRoutes);
 
 // Iniciar servidor
 app.listen(PORT, () => {

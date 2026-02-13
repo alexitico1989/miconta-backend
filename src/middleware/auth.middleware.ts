@@ -1,12 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
-// Extender el tipo Request para incluir userId
+// Extender el tipo Request para incluir userId y negocioId
 declare global {
   namespace Express {
     interface Request {
       userId?: string;
       userEmail?: string;
+      negocioId?: string; // ← NUEVO
     }
   }
 }
@@ -50,6 +51,45 @@ export const authenticateToken = (
   } catch (error) {
     return res.status(500).json({
       error: 'Error al verificar token'
+    });
+  }
+};
+
+// NUEVO MIDDLEWARE: Obtener negocio del usuario
+export const requireNegocio = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const userId = req.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        error: 'Usuario no autenticado'
+      });
+    }
+
+    // Importar prisma dinámicamente para evitar dependencia circular
+    const { default: prisma } = await import('../utils/prisma');
+
+    const negocio = await prisma.negocio.findUnique({
+      where: { usuarioId: userId }
+    });
+
+    if (!negocio) {
+      return res.status(404).json({
+        error: 'No se encontró un negocio asociado a este usuario'
+      });
+    }
+
+    req.negocioId = negocio.id;
+    next();
+
+  } catch (error) {
+    console.error('Error en requireNegocio:', error);
+    return res.status(500).json({
+      error: 'Error al obtener información del negocio'
     });
   }
 };
