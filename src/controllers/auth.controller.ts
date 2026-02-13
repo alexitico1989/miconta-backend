@@ -78,6 +78,7 @@ export const register = async (req: Request, res: Response) => {
         id: usuario.id,
         email: usuario.email,
         nombre: usuario.nombre,
+        telefono: usuario.telefono,
         plan: usuario.plan,
         trialHasta: usuario.trialHasta
       }
@@ -178,6 +179,7 @@ export const getProfile = async (req: Request, res: Response) => {
         id: true,
         email: true,
         nombre: true,
+        telefono: true,
         plan: true,
         trialHasta: true,
         estado: true,
