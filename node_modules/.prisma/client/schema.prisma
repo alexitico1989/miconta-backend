@@ -557,7 +557,7 @@ model Cliente {
   // Obligatorios SII para factura
   direccion String
   comuna    String
-  region    String
+  region    String?
   giro      String?
 
   contactoNombre String?
