@@ -27,7 +27,7 @@ dotenv.config();
 const app: Express = express(); 
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
+app.use(express.json()); 
 
 // Headers CORS
 app.use((req, res, next) => {
