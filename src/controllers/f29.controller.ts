@@ -9,33 +9,25 @@ export const getF29 = async (req: Request, res: Response) => {
     const mes = req.params.mes as string;
     const anio = req.params.anio as string;
 
-    // Validar
     const mesNum = parseInt(mes);
     const anioNum = parseInt(anio);
 
     const validacionMes = validarMes(mesNum);
     if (!validacionMes.valido) {
-      return res.status(400).json({
-        error: validacionMes.error
-      });
+      return res.status(400).json({ error: validacionMes.error });
     }
 
     const validacionAnio = validarAnio(anioNum);
     if (!validacionAnio.valido) {
-      return res.status(400).json({
-        error: validacionAnio.error
-      });
+      return res.status(400).json({ error: validacionAnio.error });
     }
 
-    // Obtener negocio
     const negocio = await prisma.negocio.findUnique({
       where: { usuarioId: userId }
     });
 
     if (!negocio) {
-      return res.status(404).json({
-        error: 'Negocio no encontrado'
-      });
+      return res.status(404).json({ error: 'Negocio no encontrado' });
     }
 
     // Buscar si ya existe declaración
@@ -49,75 +41,94 @@ export const getF29 = async (req: Request, res: Response) => {
       }
     });
 
-    // Si no existe, calcularla
+    // Si no existe, calcularla desde las transacciones
     if (!declaracion) {
-      // Obtener transacciones del mes
       const fechaInicio = new Date(anioNum, mesNum - 1, 1);
-      const fechaFin = new Date(anioNum, mesNum, 0, 23, 59, 59);
+      const fechaFin    = new Date(anioNum, mesNum, 0, 23, 59, 59);
 
       const transacciones = await prisma.transaccion.findMany({
         where: {
           negocioId: negocio.id,
-          fecha: {
-            gte: fechaInicio,
-            lte: fechaFin
-          }
+          fecha: { gte: fechaInicio, lte: fechaFin }
         }
       });
 
-      // Separar ventas y compras
-      const ventas = transacciones.filter(t => t.tipo === 'venta');
+      const ventas  = transacciones.filter(t => t.tipo === 'venta');
       const compras = transacciones.filter(t => t.tipo === 'compra');
 
-      // Calcular totales
+      // Ventas
       const ventasAfectas = ventas
         .filter(v => !v.exento)
-        .reduce((sum, v) => sum + v.montoTotal, 0);
+        .reduce((sum, v) => sum + v.montoNeto, 0);  // montoNeto = sin IVA
 
       const ventasExentas = ventas
         .filter(v => v.exento)
         .reduce((sum, v) => sum + v.montoTotal, 0);
 
+      const totalVentas = ventasAfectas + ventasExentas;
+
       const ivaDebito = ventas
         .filter(v => !v.exento)
         .reduce((sum, v) => sum + v.montoIva, 0);
 
+      // Compras
       const comprasAfectas = compras
         .filter(c => !c.exento)
-        .reduce((sum, c) => sum + c.montoTotal, 0);
+        .reduce((sum, c) => sum + c.montoNeto, 0);
 
       const comprasExentas = compras
         .filter(c => c.exento)
         .reduce((sum, c) => sum + c.montoTotal, 0);
 
+      const totalCompras = comprasAfectas + comprasExentas;
+
       const ivaCredito = compras
         .filter(c => !c.exento)
         .reduce((sum, c) => sum + c.montoIva, 0);
 
-      // IVA determinado (débito - crédito)
+      // IVA determinado
       const ivaDeterminado = ivaDebito - ivaCredito;
 
-      // PPM (0.25% de ventas netas)
-      const ventasNetas = ventas.reduce((sum, v) => sum + v.montoNeto, 0);
-      const ppm = Math.round(ventasNetas * 0.0025);
+      // PPM PROPYME: 0.25% de ventas netas (ppmTasa = 25 = 0.25%)
+      const ppmBase  = ventasAfectas + ventasExentas  // base = total ventas
+      const ppmTasa  = 25                              // 0.25% en décimas
+      const ppmMonto = Math.round(ppmBase * 0.0025)
 
-      // Total a pagar
-      const totalAPagar = Math.max(0, ivaDeterminado) + ppm;
+      const totalAPagar = Math.max(0, ivaDeterminado) + ppmMonto;
 
-      // Crear declaración
       declaracion = await prisma.declaracionF29.create({
         data: {
           negocioId: negocio.id,
-          mes: mesNum,
-          anio: anioNum,
+          mes:       mesNum,
+          anio:      anioNum,
+          // Ventas
           ventasAfectas,
           ventasExentas,
+          ventasExportacion: 0,
+          totalVentas,
+          // IVA débito
           ivaDebito,
+          notasCreditoVentas: 0,
+          ivaNotasCredito:    0,
+          // Compras
           comprasAfectas,
           comprasExentas,
+          comprasSupermercado: 0,
+          totalCompras,
+          // IVA crédito
           ivaCredito,
+          notasCreditoCompras: 0,
+          ivaNotasCreditoComp: 0,
+          notasDebitoCompras:  0,
+          ivaNotasDebitoComp:  0,
+          // Cálculos
           ivaDeterminado,
-          ppm,
+          retencionIvaTerceros: 0,
+          // PPM
+          ppmBase,
+          ppmTasa,
+          ppmMonto,
+          // Total
           totalAPagar,
           estado: 'borrador'
         }
@@ -130,20 +141,20 @@ export const getF29 = async (req: Request, res: Response) => {
         ventas: {
           afectas: declaracion.ventasAfectas,
           exentas: declaracion.ventasExentas,
-          total: declaracion.ventasAfectas + declaracion.ventasExentas
+          total:   declaracion.totalVentas
         },
         compras: {
           afectas: declaracion.comprasAfectas,
           exentas: declaracion.comprasExentas,
-          total: declaracion.comprasAfectas + declaracion.comprasExentas
+          total:   declaracion.totalCompras
         },
         iva: {
-          debito: declaracion.ivaDebito,
-          credito: declaracion.ivaCredito,
+          debito:      declaracion.ivaDebito,
+          credito:     declaracion.ivaCredito,
           determinado: declaracion.ivaDeterminado,
-          resultado: declaracion.ivaDeterminado > 0 ? 'A pagar' : 'A favor'
+          resultado:   declaracion.ivaDeterminado > 0 ? 'A pagar' : 'A favor'
         },
-        ppm: declaracion.ppm,
+        ppm:        declaracion.ppmMonto,
         totalAPagar: declaracion.totalAPagar
       }
     });
@@ -163,40 +174,28 @@ export const listarF29 = async (req: Request, res: Response) => {
     const userId = req.userId!;
     const { anio } = req.query;
 
-    // Obtener negocio
     const negocio = await prisma.negocio.findUnique({
       where: { usuarioId: userId }
     });
 
     if (!negocio) {
-      return res.status(404).json({
-        error: 'Negocio no encontrado'
-      });
+      return res.status(404).json({ error: 'Negocio no encontrado' });
     }
 
-    // Construir filtro
-    const where: any = {
-      negocioId: negocio.id
-    };
+    const where: any = { negocioId: negocio.id };
 
     if (anio) {
       const anioNum = parseInt(anio as string);
       const validacionAnio = validarAnio(anioNum);
       if (!validacionAnio.valido) {
-        return res.status(400).json({
-          error: validacionAnio.error
-        });
+        return res.status(400).json({ error: validacionAnio.error });
       }
       where.anio = anioNum;
     }
 
-    // Obtener declaraciones
     const declaraciones = await prisma.declaracionF29.findMany({
       where,
-      orderBy: [
-        { anio: 'desc' },
-        { mes: 'desc' }
-      ]
+      orderBy: [{ anio: 'desc' }, { mes: 'desc' }]
     });
 
     res.json({
@@ -217,36 +216,28 @@ export const listarF29 = async (req: Request, res: Response) => {
 export const marcarPresentado = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const id = req.params.id as string;
+    const id     = req.params.id as string;
     const { folio } = req.body;
 
-    // Verificar declaración
     const declaracion = await prisma.declaracionF29.findUnique({
       where: { id },
-      include: {
-        negocio: true
-      }
+      include: { negocio: true }
     });
 
     if (!declaracion) {
-      return res.status(404).json({
-        error: 'Declaración no encontrada'
-      });
+      return res.status(404).json({ error: 'Declaración no encontrada' });
     }
 
     if (declaracion.negocio.usuarioId !== userId) {
-      return res.status(403).json({
-        error: 'No tienes permiso'
-      });
+      return res.status(403).json({ error: 'No tienes permiso' });
     }
 
-    // Actualizar estado
     const declaracionActualizada = await prisma.declaracionF29.update({
       where: { id },
       data: {
-        estado: 'presentado',
+        estado:            'presentada',
         fechaPresentacion: new Date(),
-        folio: folio || null
+        folio:             folio || null
       }
     });
 
@@ -268,7 +259,7 @@ export const marcarPresentado = async (req: Request, res: Response) => {
 export const updateF29 = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const id = req.params.id as string;
+    const id     = req.params.id as string;
     const {
       ventasAfectas,
       ventasExentas,
@@ -276,54 +267,53 @@ export const updateF29 = async (req: Request, res: Response) => {
       comprasExentas
     } = req.body;
 
-    // Verificar declaración
     const declaracion = await prisma.declaracionF29.findUnique({
       where: { id },
-      include: {
-        negocio: true
-      }
+      include: { negocio: true }
     });
 
     if (!declaracion) {
-      return res.status(404).json({
-        error: 'Declaración no encontrada'
-      });
+      return res.status(404).json({ error: 'Declaración no encontrada' });
     }
 
     if (declaracion.negocio.usuarioId !== userId) {
-      return res.status(403).json({
-        error: 'No tienes permiso'
-      });
+      return res.status(403).json({ error: 'No tienes permiso' });
     }
 
-    if (declaracion.estado === 'presentado') {
+    if (declaracion.estado === 'presentada') {
       return res.status(400).json({
         error: 'No se puede modificar una declaración ya presentada'
       });
     }
 
-    // Recalcular con los nuevos valores
-    const ivaDebito = Math.round(ventasAfectas / 1.19 * 0.19);
-    const ivaCredito = Math.round(comprasAfectas / 1.19 * 0.19);
+    // Recalcular
+    const totalVentas  = ventasAfectas + ventasExentas;
+    const totalCompras = comprasAfectas + comprasExentas;
+    const ivaDebito    = Math.round(ventasAfectas * 0.19);
+    const ivaCredito   = Math.round(comprasAfectas * 0.19);
     const ivaDeterminado = ivaDebito - ivaCredito;
-    
-    const ventasNetas = Math.round(ventasAfectas / 1.19);
-    const ppm = Math.round(ventasNetas * 0.0025);
-    
-    const totalAPagar = Math.max(0, ivaDeterminado) + ppm;
 
-    // Actualizar
+    const ppmBase  = totalVentas;
+    const ppmTasa  = 25;
+    const ppmMonto = Math.round(ppmBase * 0.0025);
+
+    const totalAPagar = Math.max(0, ivaDeterminado) + ppmMonto;
+
     const declaracionActualizada = await prisma.declaracionF29.update({
       where: { id },
       data: {
         ventasAfectas,
         ventasExentas,
+        totalVentas,
         comprasAfectas,
         comprasExentas,
+        totalCompras,
         ivaDebito,
         ivaCredito,
         ivaDeterminado,
-        ppm,
+        ppmBase,
+        ppmTasa,
+        ppmMonto,
         totalAPagar
       }
     });

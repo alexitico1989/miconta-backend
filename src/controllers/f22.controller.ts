@@ -2,26 +2,24 @@ import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import { validarAnio } from '../utils/validators';
 
-// Tabla impuesto Global Complementario 2026 (actualizar según normativa)
+// Tabla impuesto Global Complementario 2026
 const UF_2026 = 37800;
 
 const TABLA_IGC = [
-  { desde: 0, hasta: 13.5 * UF_2026, tasa: 0, rebaja: 0 },
-  { desde: 13.5 * UF_2026, hasta: 30 * UF_2026, tasa: 0.04, rebaja: 0.04 * 13.5 * UF_2026 },
-  { desde: 30 * UF_2026, hasta: 50 * UF_2026, tasa: 0.08, rebaja: 0.08 * 30 * UF_2026 - (0.04 * 13.5 * UF_2026) },
-  { desde: 50 * UF_2026, hasta: 70 * UF_2026, tasa: 0.135, rebaja: 0.135 * 50 * UF_2026 - (0.08 * 30 * UF_2026 - (0.04 * 13.5 * UF_2026)) },
-  { desde: 70 * UF_2026, hasta: 90 * UF_2026, tasa: 0.23, rebaja: 0.23 * 70 * UF_2026 },
-  { desde: 90 * UF_2026, hasta: 120 * UF_2026, tasa: 0.304, rebaja: 0.304 * 90 * UF_2026 },
-  { desde: 120 * UF_2026, hasta: 150 * UF_2026, tasa: 0.35, rebaja: 0.35 * 120 * UF_2026 },
-  { desde: 150 * UF_2026, hasta: Infinity, tasa: 0.40, rebaja: 0.40 * 150 * UF_2026 }
+  { desde: 0,                    hasta: 13.5 * UF_2026,  tasa: 0,     rebaja: 0 },
+  { desde: 13.5 * UF_2026,       hasta: 30 * UF_2026,    tasa: 0.04,  rebaja: 0.04 * 13.5 * UF_2026 },
+  { desde: 30 * UF_2026,         hasta: 50 * UF_2026,    tasa: 0.08,  rebaja: 0.08 * 30 * UF_2026 - (0.04 * 13.5 * UF_2026) },
+  { desde: 50 * UF_2026,         hasta: 70 * UF_2026,    tasa: 0.135, rebaja: 0.135 * 50 * UF_2026 - (0.08 * 30 * UF_2026 - (0.04 * 13.5 * UF_2026)) },
+  { desde: 70 * UF_2026,         hasta: 90 * UF_2026,    tasa: 0.23,  rebaja: 0.23 * 70 * UF_2026 },
+  { desde: 90 * UF_2026,         hasta: 120 * UF_2026,   tasa: 0.304, rebaja: 0.304 * 90 * UF_2026 },
+  { desde: 120 * UF_2026,        hasta: 150 * UF_2026,   tasa: 0.35,  rebaja: 0.35 * 120 * UF_2026 },
+  { desde: 150 * UF_2026,        hasta: Infinity,         tasa: 0.40,  rebaja: 0.40 * 150 * UF_2026 }
 ];
 
-// CALCULAR IMPUESTO
 function calcularImpuestoGlobalComplementario(rentaLiquida: number): number {
   for (const tramo of TABLA_IGC) {
     if (rentaLiquida >= tramo.desde && rentaLiquida < tramo.hasta) {
-      const impuesto = rentaLiquida * tramo.tasa - tramo.rebaja;
-      return Math.round(impuesto);
+      return Math.round(rentaLiquida * tramo.tasa - tramo.rebaja);
     }
   }
   return 0;
@@ -31,29 +29,22 @@ function calcularImpuestoGlobalComplementario(rentaLiquida: number): number {
 export const getF22 = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const anio = req.params.anio as string;
-
-    const anioNum = parseInt(anio);
+    const anioNum = parseInt(req.params.anio as string);
 
     const validacionAnio = validarAnio(anioNum);
     if (!validacionAnio.valido) {
-      return res.status(400).json({
-        error: validacionAnio.error
-      });
+      return res.status(400).json({ error: validacionAnio.error });
     }
 
-    // Obtener negocio
     const negocio = await prisma.negocio.findUnique({
       where: { usuarioId: userId }
     });
 
     if (!negocio) {
-      return res.status(404).json({
-        error: 'Negocio no encontrado'
-      });
+      return res.status(404).json({ error: 'Negocio no encontrado' });
     }
 
-    // Buscar si ya existe declaración
+    // Buscar si ya existe
     let declaracion = await prisma.declaracionF22.findUnique({
       where: {
         negocioId_anio: {
@@ -63,17 +54,10 @@ export const getF22 = async (req: Request, res: Response) => {
       }
     });
 
-    // Si no existe, calcularla
     if (!declaracion) {
-      // Obtener todos los F29 del año
       const f29s = await prisma.declaracionF29.findMany({
-        where: {
-          negocioId: negocio.id,
-          anio: anioNum
-        },
-        orderBy: {
-          mes: 'asc'
-        }
+        where: { negocioId: negocio.id, anio: anioNum },
+        orderBy: { mes: 'asc' }
       });
 
       if (f29s.length === 0) {
@@ -82,37 +66,51 @@ export const getF22 = async (req: Request, res: Response) => {
         });
       }
 
-      // Sumar ingresos totales del año (ventas afectas + exentas)
-      const ingresosTotal = f29s.reduce((sum, f29) => {
-        return sum + f29.ventasAfectas + f29.ventasExentas;
-      }, 0);
+      // Ventas anuales = suma de totalVentas de cada F29
+      const ventasAnuales = f29s.reduce((sum, f29) => sum + f29.totalVentas, 0);
 
-      // Sumar PPM pagado en el año
-      const ppmPagado = f29s.reduce((sum, f29) => sum + f29.ppm, 0);
+      // Gastos anuales = suma de totalCompras de cada F29
+      const gastosAnuales = f29s.reduce((sum, f29) => sum + f29.totalCompras, 0);
 
-      // Para almacén simple: renta líquida = ingresos (sin gastos deducibles)
-      // En Pro-PYME simplificado no se deducen gastos
-      const gastosDeducibles = 0;
-      const rentaLiquida = ingresosTotal - gastosDeducibles;
+      // PPM acumulado = suma de ppmMonto de cada F29
+      const ppmAcumuladoAnual = f29s.reduce((sum, f29) => sum + f29.ppmMonto, 0);
 
-      // Calcular impuesto según tabla
-      const impuestoDeterminado = calcularImpuestoGlobalComplementario(rentaLiquida);
+      // PROPYME: renta presunta = 6.67% de ventas anuales
+      const rentaPresunta = Math.round(ventasAnuales * 0.0667);
 
-      // Resultado final (impuesto - PPM pagado)
-      const impuestoAPagar = impuestoDeterminado - ppmPagado;
+      // Impuesto = 25% sobre renta presunta
+      const tasaImpuesto    = 2500  // 25.00% en décimas
+      const impuestoDeterminado = Math.round(rentaPresunta * 0.25);
 
-      // Crear declaración
+      // Créditos
+      const totalCreditos = ppmAcumuladoAnual;
+
+      // Resultado
+      const impuestoAPagar = impuestoDeterminado - totalCreditos;
+
       declaracion = await prisma.declaracionF22.create({
         data: {
           negocioId: negocio.id,
-          anio: anioNum,
-          ingresosTotal,
-          gastosDeducibles,
-          rentaLiquida,
+          anio:      anioNum,
+          // Ventas y gastos anuales
+          ventasAnuales,
+          gastosAnuales,
+          // Renta presunta PROPYME
+          rentaPresunta,
+          rentaEfectiva:    null,
+          rentaDeterminada: rentaPresunta,
+          // Impuesto
+          tasaImpuesto,
           impuestoDeterminado,
-          ppmPagado,
-          creditosImputables: 0,
+          // Créditos
+          ppmAcumuladoAnual,
+          retencionesTrabajadores: 0,
+          otrosCreditos:           0,
+          totalCreditos,
+          // Resultado
           impuestoAPagar,
+          resultado:      impuestoAPagar > 0 ? 'pago' : impuestoAPagar < 0 ? 'devolucion' : 'nulo',
+          montoResultado: Math.abs(impuestoAPagar),
           estado: 'borrador'
         }
       });
@@ -121,32 +119,24 @@ export const getF22 = async (req: Request, res: Response) => {
     res.json({
       declaracion,
       resumen: {
-        anio: anioNum,
-        ingresosTotal: declaracion.ingresosTotal,
-        rentaLiquida: declaracion.rentaLiquida,
+        anio:               anioNum,
+        ventasAnuales:      declaracion.ventasAnuales,
+        rentaPresunta:      declaracion.rentaPresunta,
+        rentaDeterminada:   declaracion.rentaDeterminada,
         impuestoDeterminado: declaracion.impuestoDeterminado,
-        ppmPagado: declaracion.ppmPagado,
+        ppmAcumuladoAnual:  declaracion.ppmAcumuladoAnual,
+        totalCreditos:      declaracion.totalCreditos,
         resultado: {
-          monto: Math.abs(declaracion.impuestoAPagar),
-          tipo: declaracion.impuestoAPagar > 0 ? 'A pagar' : 'Devolución'
+          monto: declaracion.montoResultado,
+          tipo:  declaracion.resultado === 'pago' ? 'A pagar' :
+                 declaracion.resultado === 'devolucion' ? 'Devolución' : 'Neutro'
         }
       },
       detalle: {
         f29Presentados: await prisma.declaracionF29.count({
-          where: {
-            negocioId: negocio.id,
-            anio: anioNum,
-            estado: 'presentado'
-          }
+          where: { negocioId: negocio.id, anio: anioNum, estado: 'presentada' }
         }),
-        totalF29: 12,
-        pendientes: 12 - await prisma.declaracionF29.count({
-          where: {
-            negocioId: negocio.id,
-            anio: anioNum,
-            estado: 'presentado'
-          }
-        })
+        totalF29: 12
       }
     });
 
@@ -164,31 +154,20 @@ export const listarF22 = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
 
-    // Obtener negocio
     const negocio = await prisma.negocio.findUnique({
       where: { usuarioId: userId }
     });
 
     if (!negocio) {
-      return res.status(404).json({
-        error: 'Negocio no encontrado'
-      });
+      return res.status(404).json({ error: 'Negocio no encontrado' });
     }
 
-    // Obtener declaraciones
     const declaraciones = await prisma.declaracionF22.findMany({
-      where: {
-        negocioId: negocio.id
-      },
-      orderBy: {
-        anio: 'desc'
-      }
+      where:   { negocioId: negocio.id },
+      orderBy: { anio: 'desc' }
     });
 
-    res.json({
-      declaraciones,
-      total: declaraciones.length
-    });
+    res.json({ declaraciones, total: declaraciones.length });
 
   } catch (error) {
     console.error('Error en listarF22:', error);
@@ -203,41 +182,33 @@ export const listarF22 = async (req: Request, res: Response) => {
 export const marcarPresentadoF22 = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const id = req.params.id as string;
+    const id     = req.params.id as string;
     const { folio } = req.body;
 
-    // Verificar declaración
     const declaracion = await prisma.declaracionF22.findUnique({
       where: { id },
-      include: {
-        negocio: true
-      }
+      include: { negocio: true }
     });
 
     if (!declaracion) {
-      return res.status(404).json({
-        error: 'Declaración no encontrada'
-      });
+      return res.status(404).json({ error: 'Declaración no encontrada' });
     }
 
     if (declaracion.negocio.usuarioId !== userId) {
-      return res.status(403).json({
-        error: 'No tienes permiso'
-      });
+      return res.status(403).json({ error: 'No tienes permiso' });
     }
 
-    // Actualizar estado
     const declaracionActualizada = await prisma.declaracionF22.update({
       where: { id },
       data: {
-        estado: 'presentado',
+        estado:            'presentada',
         fechaPresentacion: new Date(),
-        folio: folio || null
+        folio:             folio || null
       }
     });
 
     res.json({
-      message: 'F22 marcado como presentado',
+      message:     'F22 marcado como presentado',
       declaracion: declaracionActualizada
     });
 
@@ -253,59 +224,46 @@ export const marcarPresentadoF22 = async (req: Request, res: Response) => {
 // VALIDAR F22 (verificar que estén todos los F29)
 export const validarF22 = async (req: Request, res: Response) => {
   try {
-    const userId = req.userId!;
-    const anio = req.params.anio as string;
-
-    const anioNum = parseInt(anio);
+    const userId  = req.userId!;
+    const anioNum = parseInt(req.params.anio as string);
 
     const validacionAnio = validarAnio(anioNum);
     if (!validacionAnio.valido) {
-      return res.status(400).json({
-        error: validacionAnio.error
-      });
+      return res.status(400).json({ error: validacionAnio.error });
     }
 
-    // Obtener negocio
     const negocio = await prisma.negocio.findUnique({
       where: { usuarioId: userId }
     });
 
     if (!negocio) {
-      return res.status(404).json({
-        error: 'Negocio no encontrado'
-      });
+      return res.status(404).json({ error: 'Negocio no encontrado' });
     }
 
-    // Verificar F29s
     const f29s = await prisma.declaracionF29.findMany({
-      where: {
-        negocioId: negocio.id,
-        anio: anioNum
-      },
-      orderBy: {
-        mes: 'asc'
-      }
+      where:   { negocioId: negocio.id, anio: anioNum },
+      orderBy: { mes: 'asc' }
     });
 
-    const mesesPresentados = f29s.filter(f => f.estado === 'presentado').map(f => f.mes);
-    const mesesFaltantes = [];
+    const mesesPresentados = f29s
+      .filter(f => f.estado === 'presentada')
+      .map(f => f.mes);
 
+    const mesesFaltantes: number[] = [];
     for (let mes = 1; mes <= 12; mes++) {
-      if (!mesesPresentados.includes(mes)) {
-        mesesFaltantes.push(mes);
-      }
+      if (!mesesPresentados.includes(mes)) mesesFaltantes.push(mes);
     }
 
     const valido = mesesFaltantes.length === 0;
 
     res.json({
       valido,
-      f29Presentados: f29s.filter(f => f.estado === 'presentado').length,
-      f29Borradores: f29s.filter(f => f.estado === 'borrador').length,
+      f29Presentados: f29s.filter(f => f.estado === 'presentada').length,
+      f29Borradores:  f29s.filter(f => f.estado === 'borrador').length,
       mesesFaltantes,
-      mensaje: valido 
-        ? 'Todos los F29 están presentados. Puedes generar el F22.' 
-        : `Faltan ${mesesFaltantes.length} F29 por presentar: ${mesesFaltantes.join(', ')}`
+      mensaje: valido
+        ? 'Todos los F29 están presentados. Puedes generar el F22.'
+        : `Faltan ${mesesFaltantes.length} F29 por presentar: meses ${mesesFaltantes.join(', ')}`
     });
 
   } catch (error) {

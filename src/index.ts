@@ -15,6 +15,12 @@ import f29Routes from './routes/f29.routes';
 import f22Routes from './routes/f22.routes';
 import alertaRoutes from './routes/alerta.routes';
 import dashboardRoutes from './routes/dashboard.routes';
+import certificadoRoutes from './routes/certificado.routes'
+import cafRoutes         from './routes/caf.routes'
+import dteRoutes         from './routes/dte.routes'
+import siiRoutes         from './routes/sii.routes'
+import libroCVRoutes from './routes/libroCV.routes'
+import pdfRoutes      from './routes/pdf.routes'
 
 dotenv.config();
 
@@ -83,6 +89,12 @@ app.use('/api/f22', f22Routes);
 app.use('/api/alertas', alertaRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/clientes', clienteRoutes);
+app.use('/api/certificado', certificadoRoutes)
+app.use('/api/caf',         cafRoutes)
+app.use('/api/dte',         dteRoutes)
+app.use('/api/sii',         siiRoutes)
+app.use('/api/libro-cv', libroCVRoutes)
+app.use('/api/pdf',      pdfRoutes)
 
 // Iniciar servidor
 app.listen(PORT, () => {

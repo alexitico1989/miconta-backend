@@ -1,6 +1,17 @@
-// ============================================
-// MICONTA - SCHEMA PRISMA COMPLETO
-// ============================================
+// ============================================================
+// MICONTA - SCHEMA PRISMA DEFINITIVO
+// Sistema de Facturación Electrónica SII - Listo para PSTE
+// ============================================================
+// Tablas nuevas respecto a versión anterior:
+//   + CafFolio         — CAF por tipo de documento y contribuyente
+//   + LibroCV          — Libro de Compra/Venta mensual (obligatorio SII)
+//   + LogDte           — Auditoría completa de cada envío al SII
+//   + ConfiguracionSii — Parámetros SII por negocio
+// Cambios en tablas existentes:
+//   ~ Negocio          — certificado .p12 encriptado AES-256-GCM, ambiente SII
+//   ~ DocumentoSii     — ciclo completo DTE, acuse de recibo, auditoría
+//   ~ Transaccion      — montoExento, relación correccion fix
+// ============================================================
 
 generator client {
   provider = "prisma-client-js"
@@ -11,9 +22,9 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ============================================
+// ============================================================
 // 1. USUARIOS
-// ============================================
+// ============================================================
 model Usuario {
   id       String  @id @default(uuid())
   email    String  @unique
@@ -22,122 +33,407 @@ model Usuario {
   telefono String?
   rut      String?
 
-  // Suscripción
-  plan       String    @default("trial") // trial, pro, cancelado
+  plan       String    @default("trial") // trial, pro, enterprise
   trialHasta DateTime?
   estado     String    @default("activo") // activo, suspendido, cancelado
 
-  // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relaciones
   negocio Negocio?
   pagos   Pago[]
 
   @@map("usuarios")
 }
 
-// ============================================
-// 2. NEGOCIOS
-// ============================================
+// ============================================================
+// 2. NEGOCIOS (Contribuyente SII)
+// ============================================================
 model Negocio {
   id        String @id @default(uuid())
   usuarioId String @unique
 
-  // Datos básicos
   nombreNegocio String
-  rutNegocio    String?
-  tipo          String // almacen, minimarket, ferreteria, etc
+  rutNegocio    String  @unique
+  tipo          String
   giro          String?
 
-  // Ubicación
   direccion String?
   comuna    String?
   region    String?
+  codigoSii String?
 
-  // Datos tributarios
-  ventasMensualesAprox Int?
-  regimenTributario    String  @default("propyme") // propyme, general
+  emailSii    String?
+  telefonoSii String?
 
-  // Timestamps
+  regimenTributario      String   @default("propyme")
+  ventasMensualesAprox   Int?
+  fechaInicioActividades DateTime?
+
+  // -------------------------------------------------------
+  // CERTIFICADO DIGITAL (.p12) — Encriptado AES-256-GCM
+  // Master key SOLO en variables de entorno (nunca en BD)
+  // -------------------------------------------------------
+  certificadoP12         Bytes?   // .p12 encriptado
+  certificadoP12Iv       String?  // IV del cifrado (base64)
+  certificadoP12Tag      String?  // Auth tag GCM (base64)
+  certificadoPassword    String?  // Contraseña .p12 encriptada
+  certificadoPasswordIv  String?  // IV cifrado contraseña
+  certificadoPasswordTag String?  // Auth tag contraseña
+  certificadoVencimiento DateTime?
+  certificadoActivo      Boolean  @default(false)
+  certificadoSubject     String?  // CN del cert (para mostrar en UI)
+
+  // Ambiente SII — SIEMPRE empieza en certificacion
+  ambienteSii            String  @default("certificacion") // certificacion | produccion
+
+  // Estado proceso certificación SII
+  estadoCertificacionSii String  @default("no_iniciado")
+  // no_iniciado → postulado → en_certificacion → set_prueba
+  // → simulacion → muestras_impresion → intercambio → aprobado
+
+  // Folios actuales (se actualiza con cada DTE emitido)
+  folioBoletaActual       Int @default(1)
+  folioFacturaActual      Int @default(1)
+  folioNotaCreditoActual  Int @default(1)
+  folioNotaDebitoActual   Int @default(1)
+  folioGuiaActual         Int @default(1)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relaciones
   usuario          Usuario          @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
   transacciones    Transaccion[]
   productos        Producto[]
   proveedores      Proveedor[]
-  clientes         Cliente[]        // ← NUEVO
+  clientes         Cliente[]
   trabajadores     Trabajador[]
   declaracionesF29 DeclaracionF29[]
   declaracionesF22 DeclaracionF22[]
   alertas          Alerta[]
+  notasContables   NotaContable[]
+  documentosSii    DocumentoSii[]
+  cafFolios        CafFolio[]
+  librosCV         LibroCV[]
+  logsDte          LogDte[]
+  configuracionSii ConfiguracionSii?
 
   @@map("negocios")
 }
 
-// ============================================
-// 3. TRANSACCIONES (Ventas y Compras)
-// ============================================
+// ============================================================
+// 3. CONFIGURACIÓN SII POR NEGOCIO
+// ============================================================
+model ConfiguracionSii {
+  id        String @id @default(uuid())
+  negocioId String @unique
+
+  codigoActividad      String?
+  actividadDescripcion String?
+  resolucionNumero     String?   // N° resolución SII que autoriza
+  resolucionFecha      DateTime?
+
+  emailDte String? // Casilla electrónica SII para recibir DTEs
+
+  // Configuración PDF del DTE
+  logoUrl       String?
+  colorPrimario String?
+  piePagina     String?
+
+  // Envío automático
+  envioAutomatico  Boolean @default(true)
+  emailCopiaEmisor Boolean @default(true)
+
+  // Alerta de folios
+  alertaFoliosMinimo Int @default(50)
+
+  // Datos representante legal (para postulación PSTE)
+  repLegalRut    String?
+  repLegalNombre String?
+  repLegalEmail  String?
+  repLegalCargo  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Cascade)
+
+  @@map("configuraciones_sii")
+}
+
+// ============================================================
+// 4. CAF FOLIOS — CRÍTICO PARA SII
+// Código de Autorización de Folios que entrega el SII
+// Sin CAF válido no se puede emitir ningún DTE
+// ============================================================
+model CafFolio {
+  id        String @id @default(uuid())
+  negocioId String
+
+  tipoDocumento String
+  // 33: Factura Electrónica
+  // 34: Factura No Afecta o Exenta
+  // 39: Boleta Electrónica
+  // 41: Boleta No Afecta o Exenta
+  // 52: Guía de Despacho Electrónica
+  // 56: Nota de Débito Electrónica
+  // 61: Nota de Crédito Electrónica
+
+  folioDesde    Int
+  folioHasta    Int
+  folioActual   Int  // Próximo folio a usar
+
+  // XML del CAF (firmado por SII) — guardado encriptado
+  xmlCaf        String
+  privateKey    String  // Llave privada del CAF encriptada AES-256-GCM
+  privateKeyIv  String
+  privateKeyTag String
+
+  activo            Boolean   @default(true)
+  fechaVencimiento  DateTime?
+  foliosUsados      Int       @default(0)
+  foliosDisponibles Int
+
+  ambiente String @default("certificacion")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Cascade)
+
+  @@index([negocioId, tipoDocumento, activo])
+  @@index([negocioId, ambiente])
+  @@map("caf_folios")
+}
+
+// ============================================================
+// 5. DOCUMENTOS SII (DTE)
+// ============================================================
+model DocumentoSii {
+  id        String @id @default(uuid())
+  negocioId String
+
+  tipoDocumento String
+  folio         Int
+  fechaEmision  DateTime @default(now())
+  ambiente      String   @default("certificacion")
+
+  // Ciclo de vida del DTE
+  estado String @default("borrador")
+  // borrador → firmado → enviado_sii → aceptado_sii | rechazado_sii
+  // → enviado_receptor → aceptado_receptor | rechazado_receptor
+
+  // Respuesta SII
+  trackId       String?
+  respuestaSii  String?
+  estadoSii     String?  // 00: OK
+  glosaEstado   String?
+
+  // Datos del receptor
+  receptorRut       String
+  receptorNombre    String
+  receptorDireccion String?
+  receptorComuna    String?
+  receptorGiro      String?
+  receptorEmail     String?
+
+  // Montos
+  montoNeto   Int
+  montoExento Int @default(0)
+  montoIva    Int
+  montoTotal  Int
+  tasaIva     Int @default(19)
+
+  // Documentos generados
+  xmlDocumento      String?  // XML DTE firmado
+  xmlEnvio          String?  // XML EnvioDTE (wrapper)
+  pdfUrl            String?
+  timbreElectronico String?  // TED en base64
+
+  // Referencias (para notas crédito/débito)
+  referenciaFolio  Int?
+  referenciaTipo   String?
+  referenciaRazon  String?
+  codigoReferencia String?
+
+  // Envío al receptor
+  emailEnviado    Boolean   @default(false)
+  fechaEmailEnvio DateTime?
+
+  // Acuse de recibo (8 días para responder)
+  acuseRecibo  String?   // aceptado | rechazado | pendiente
+  fechaAcuse   DateTime?
+  motivoRechazo String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  negocio      Negocio      @relation(fields: [negocioId], references: [id], onDelete: Cascade)
+  transaccion  Transaccion? @relation("TransaccionDocumentoSii")
+  logsDte      LogDte[]     @relation("LogDteDocumentoSii")
+
+  @@unique([negocioId, tipoDocumento, folio, ambiente])
+  @@index([negocioId, estado])
+  @@index([negocioId, ambiente])
+  @@index([fechaEmision])
+  @@map("documentos_sii")
+}
+
+// ============================================================
+// 6. LOG DTE — AUDITORÍA COMPLETA
+// El SII puede pedirte trazabilidad de cada operación
+// ============================================================
+model LogDte {
+  id             String  @id @default(uuid())
+  negocioId      String
+  documentoSiiId String?
+
+  operacion String
+  // envio_dte | consulta_estado | solicitud_caf
+  // envio_libro_cv | autenticacion_sii | anulacion_dte
+
+  exitoso         Boolean
+  codigoRespuesta String?
+  mensajeError    String?
+
+  // Resúmenes sin datos sensibles (sin cert, sin firma)
+  requestResumen  String?
+  responseResumen String?
+
+  duracionMs Int?
+  ambiente   String @default("certificacion")
+
+  createdAt DateTime @default(now())
+
+  negocio      Negocio       @relation(fields: [negocioId], references: [id], onDelete: Cascade)
+  documentoSii DocumentoSii? @relation("LogDteDocumentoSii", fields: [documentoSiiId], references: [id])
+
+  @@index([negocioId, operacion])
+  @@index([negocioId, createdAt])
+  @@index([documentoSiiId])
+  @@map("logs_dte")
+}
+
+// ============================================================
+// 7. LIBRO COMPRA/VENTA — OBLIGATORIO SII
+// ============================================================
+model LibroCV {
+  id        String @id @default(uuid())
+  negocioId String
+
+  tipo String // compra | venta
+  mes  Int
+  anio Int
+
+  estado String @default("pendiente")
+  // pendiente → generado → enviado → aceptado | rechazado
+
+  totalDocumentos Int @default(0)
+  totalNeto       Int @default(0)
+  totalIva        Int @default(0)
+  totalExento     Int @default(0)
+  totalMonto      Int @default(0)
+
+  xmlLibro  String?
+  trackId   String?
+  respuesta String?
+
+  fechaGeneracion DateTime?
+  fechaEnvio      DateTime?
+  fechaAceptacion DateTime?
+
+  ambiente String @default("certificacion")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Cascade)
+
+  @@unique([negocioId, tipo, mes, anio, ambiente])
+  @@index([negocioId, estado])
+  @@map("libros_cv")
+}
+
+// ============================================================
+// 8. TRANSACCIONES
+// ============================================================
 model Transaccion {
   id        String @id @default(uuid())
   negocioId String
 
-  tipo  String // venta, compra
-  fecha DateTime
+  tipo  String
+  fecha DateTime @default(now())
 
-  // Tipo de documento (NUEVO)
-  tipoDocumento String @default("boleta") // boleta, factura, nota_credito, etc
+  tipoDocumento String @default("boleta")
 
-  // Cliente para facturas (NUEVO)
   clienteId String?
   cliente   Cliente? @relation(fields: [clienteId], references: [id])
 
-  // Montos
-  montoTotal Int // Monto bruto con IVA
-  montoNeto  Int // Monto sin IVA
-  montoIva   Int // IVA
-  exento     Boolean @default(false)
+  proveedorId  String?
+  proveedorRel Proveedor? @relation(fields: [proveedorId], references: [id])
+  proveedor    String?
 
-  // Detalles
-  descripcion  String?
-  proveedor    String? // Nombre proveedor (si es compra)
-  numDocumento String? // Número boleta/factura (folio)
-  fotoUrl      String? // Foto boleta (opcional)
-  metodoPago   String? // efectivo, transferencia, tarjeta, credito
+  montoNeto   Int
+  montoExento Int @default(0)
+  montoIva    Int
+  montoTotal  Int
+  tasaIva     Int @default(19)
 
-  // Timestamps
+  exento   Boolean @default(false)
+  noSujeto Boolean @default(false)
+
+  numDocumento     String?
+  descripcion      String?
+  metodoPago       String?
+  fechaVencimiento DateTime?
+
+  documentoSiiId String?       @unique
+  documentoSii   DocumentoSii? @relation("TransaccionDocumentoSii", fields: [documentoSiiId], references: [id])
+
+  correccionId String?       @unique
+  correccion   NotaContable? @relation("TransaccionCorreccion", fields: [correccionId], references: [id])
+
+  transaccionOriginalId String?
+  esCorreccion          Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relaciones
   negocio  Negocio              @relation(fields: [negocioId], references: [id], onDelete: Cascade)
   detalles DetalleTransaccion[]
 
   @@index([negocioId, fecha])
   @@index([tipo])
-  @@index([clienteId]) // NUEVO
+  @@index([clienteId])
+  @@index([proveedorId])
   @@map("transacciones")
 }
 
-// ============================================
-// 3.5 DETALLE TRANSACCIÓN (Productos por transacción)
-// ============================================
+// ============================================================
+// 9. DETALLE TRANSACCIÓN
+// ============================================================
 model DetalleTransaccion {
   id            String @id @default(uuid())
   transaccionId String
   productoId    String
 
+  numeroLinea    Int    @default(1)
+  nombreItem     String
+  descripcion    String?
   cantidad       Int
+  unidadMedida   String @default("UN")
   precioUnitario Int
+  montoItem      Int
+  descuentoMonto Int    @default(0)
+  descuentoPct   Int    @default(0)
+  recargoMonto   Int    @default(0)
+  tasaIva        Int    @default(19)
+  montoIva       Int
+  montoExento    Int    @default(0)
   subtotal       Int
 
-  // Timestamps
   createdAt DateTime @default(now())
 
-  // Relaciones
   transaccion Transaccion @relation(fields: [transaccionId], references: [id], onDelete: Cascade)
   producto    Producto    @relation(fields: [productoId], references: [id])
 
@@ -146,404 +442,445 @@ model DetalleTransaccion {
   @@map("detalles_transaccion")
 }
 
-// ============================================
-// 4. PRODUCTOS
-// ============================================
+// ============================================================
+// 10. PRODUCTOS
+// ============================================================
 model Producto {
   id        String @id @default(uuid())
   negocioId String
 
-  nombre    String
-  codigo    String? // Código barras o SKU
-  categoria String?
+  nombre       String
+  codigo       String?
+  codigoBarra  String?
+  categoria    String?
+  codigoSii    String?
+  tipoItem     String  @default("producto")
+  unidadMedida String  @default("UN")
 
-  // Stock
-  stockActual  Int    @default(0)
-  stockMinimo  Int    @default(5)
-  unidadMedida String @default("unidad") // unidad, kg, litro, etc
+  stockActual Int @default(0)
+  stockMinimo Int @default(5)
 
-  // Precios
-  precioCompra Int? // Último precio compra
+  precioCompra Int?
   precioVenta  Int?
 
-  // Extras
+  afectoIva Boolean @default(true)
+
   fotoUrl String?
   notas   String?
   activo  Boolean @default(true)
 
-  // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relaciones
   negocio             Negocio              @relation(fields: [negocioId], references: [id], onDelete: Cascade)
   movimientos         MovimientoStock[]
   detallesTransaccion DetalleTransaccion[]
 
   @@index([negocioId])
+  @@index([codigoBarra])
   @@map("productos")
 }
 
-// ============================================
-// 5. MOVIMIENTOS STOCK
-// ============================================
+// ============================================================
+// 11. MOVIMIENTOS STOCK
+// ============================================================
 model MovimientoStock {
   id         String @id @default(uuid())
   productoId String
 
-  tipo     String // entrada, salida, ajuste
-  cantidad Int
-  motivo   String? // venta, compra, merma, ajuste manual
+  tipo           String
+  cantidad       Int
+  motivo         String?
+  documentoTipo  String?
+  documentoFolio Int?
+  stockAnterior  Int
+  stockNuevo     Int
+  costoUnitario  Int?
+  fecha          DateTime @default(now())
 
-  stockAnterior Int
-  stockNuevo    Int
-
-  fecha DateTime @default(now())
-
-  // Relaciones
   producto Producto @relation(fields: [productoId], references: [id], onDelete: Cascade)
 
   @@index([productoId, fecha])
   @@map("movimientos_stock")
 }
 
-// ============================================
-// 6. PROVEEDORES
-// ============================================
+// ============================================================
+// 12. PROVEEDORES
+// ============================================================
 model Proveedor {
   id        String @id @default(uuid())
   negocioId String
 
-  nombre   String
-  rut      String?
-  contacto String? // Nombre vendedor
-  telefono String?
-  email    String?
+  rut         String
+  nombre      String
+  razonSocial String?
+  direccion   String?
+  comuna      String?
+  region      String?
+  giro        String?
 
-  // Gestión visitas
-  frecuenciaVisita Int? // Días entre visitas
+  contactoNombre   String?
+  telefono         String?
+  email            String?
+  frecuenciaVisita Int?
   ultimaVisita     DateTime?
   proximaVisita    DateTime?
-  diaVisita        String? // lunes, martes, etc
+  diaVisita        String?
+  categoria        String?
 
-  // Datos adicionales
-  categoria String? // abarrotes, bebidas, limpieza, etc
-  notas     String?
-  activo    Boolean @default(true)
+  notas  String?
+  activo Boolean @default(true)
 
-  // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relaciones
-  negocio Negocio  @relation(fields: [negocioId], references: [id], onDelete: Cascade)
-  pedidos Pedido[]
+  negocio       Negocio       @relation(fields: [negocioId], references: [id], onDelete: Cascade)
+  pedidos       Pedido[]
+  transacciones Transaccion[]
 
+  @@unique([negocioId, rut])
   @@index([negocioId])
   @@map("proveedores")
 }
 
-// ============================================
-// 6.5 CLIENTES (NUEVO)
-// ============================================
+// ============================================================
+// 13. CLIENTES
+// ============================================================
 model Cliente {
   id        String @id @default(uuid())
   negocioId String
 
-  // Datos obligatorios para factura
-  rut       String
-  nombre    String
-  direccion String?
-  comuna    String?
-  region    String?
-  giro      String? // Giro comercial
+  rut         String
+  nombre      String
+  razonSocial String?
 
-  // Contacto
-  contactoNombre  String? // Nombre persona de contacto
-  telefono        String?
-  email           String?
+  // Obligatorios SII para factura
+  direccion String
+  comuna    String
+  region    String
+  giro      String?
 
-  // Datos adicionales
-  notas   String?
-  activo  Boolean @default(true)
+  contactoNombre String?
+  telefono       String?
+  email          String?
 
-  // Timestamps
+  notas  String?
+  activo Boolean @default(true)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relaciones
   negocio       Negocio       @relation(fields: [negocioId], references: [id], onDelete: Cascade)
   transacciones Transaccion[]
 
-  @@unique([negocioId, rut]) // RUT único por negocio
+  @@unique([negocioId, rut])
   @@index([negocioId])
   @@index([rut])
   @@map("clientes")
 }
 
-// ============================================
-// 7. PEDIDOS SUGERIDOS
-// ============================================
+// ============================================================
+// 14. NOTAS CONTABLES
+// ============================================================
+model NotaContable {
+  id String @id @default(uuid())
+
+  tipo              String
+  transaccionId     String  @unique
+  monto             Int
+  motivo            String
+  categoria         String
+  codigoReferenciaSii String?
+
+  estado         String  @default("pendiente")
+  documentoSiiId String?
+  xmlUrl         String?
+  pdfUrl         String?
+
+  negocioId String
+  negocio   Negocio @relation(fields: [negocioId], references: [id], onDelete: Cascade)
+
+  usuarioId String?
+
+  transaccionCorregida Transaccion? @relation("TransaccionCorreccion")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([negocioId, estado])
+  @@map("notas_contables")
+}
+
+// ============================================================
+// 15. PEDIDOS SUGERIDOS
+// ============================================================
 model Pedido {
   id          String @id @default(uuid())
   proveedorId String
 
-  fecha  DateTime @default(now())
-  estado String   @default("sugerido") // sugerido, confirmado, recibido
-
-  items      Json // Array de {producto, cantidadSugerida, cantidadReal}
+  fecha      DateTime @default(now())
+  estado     String   @default("sugerido")
+  items      Json
   montoTotal Int?
+  notas      String?
 
-  notas String?
-
-  // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relaciones
   proveedor Proveedor @relation(fields: [proveedorId], references: [id], onDelete: Cascade)
 
-  @@index([proveedorId])
+  @@index([proveedorId, estado])
   @@map("pedidos")
 }
 
-// ============================================
-// 8. TRABAJADORES
-// ============================================
+// ============================================================
+// 16. TRABAJADORES (Para Previred)
+// ============================================================
 model Trabajador {
   id        String @id @default(uuid())
   negocioId String
 
-  // Datos personales
-  rut             String    @unique
+  rut             String   @unique
   nombre          String
   apellidoPaterno String
   apellidoMaterno String
-  fechaNacimiento DateTime?
+  sexo            String
+  fechaNacimiento DateTime
+  estadoCivil     String
 
-  // Contacto
-  telefono  String?
-  email     String?
   direccion String?
   comuna    String?
+  region    String?
 
-  // Datos laborales
   cargo        String?
   fechaIngreso DateTime
   fechaSalida  DateTime?
+  tipoContrato String   @default("indefinido")
+  jornada      String   @default("completa")
 
-  // Sueldo
-  sueldoBase Int
+  sueldoBase         Int
+  gratificacion      Boolean @default(true)
+  asignacionFamiliar Boolean @default(false)
+  numeroCargas       Int     @default(0)
 
-  // Previsión
-  afp    String // capital, cuprum, habitat, etc
-  salud  String // fonasa, isapre
-  isapre String? // Nombre isapre si aplica
+  afp    String
+  salud  String
+  isapre String?
 
-  // Estado
+  cotizacionAdicional Int @default(0)
+  apvTasa             Int @default(0)
+  apvMonto            Int @default(0)
+  seguroCesantia      Boolean @default(true)
+
   activo Boolean @default(true)
 
-  // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relaciones
   negocio       Negocio       @relation(fields: [negocioId], references: [id], onDelete: Cascade)
   liquidaciones Liquidacion[]
 
-  @@index([negocioId])
+  @@index([negocioId, activo])
   @@map("trabajadores")
 }
 
-// ============================================
-// 9. LIQUIDACIONES
-// ============================================
+// ============================================================
+// 17. LIQUIDACIONES (Previred)
+// ============================================================
 model Liquidacion {
   id           String @id @default(uuid())
   trabajadorId String
 
-  // Periodo
-  mes  Int // 1-12
+  mes  Int
   anio Int
 
-  // Haberes
-  sueldoBase   Int
-  horasExtra   Int @default(0)
-  bonos        Int @default(0)
-  totalHaberes Int
+  diasTrabajados     Int @default(30)
+  sueldoBase         Int
+  horasExtraCantidad Int @default(0)
+  horasExtraMonto    Int @default(0)
+  gratificacion      Int @default(0)
+  asignacionFamiliar Int @default(0)
+  bonos              Int @default(0)
+  aguinaldo          Int @default(0)
+  totalHaberes       Int
 
-  // Descuentos legales
-  afp           Int
-  salud         Int
-  cesantia      Int
-  impuestoUnico Int @default(0)
-
-  // Otros descuentos
+  afp             Int
+  saludFonasa     Int?
+  saludIsapre     Int?
+  seguroCesantia  Int
+  apv             Int @default(0)
+  impuestoUnico   Int @default(0)
+  prestamos       Int @default(0)
   otrosDescuentos Int @default(0)
   totalDescuentos Int
 
-  // Resultado
-  sueldoLiquido Int
+  sueldoLiquido  Int
+  costoEmpleador Int
 
-  // Documentos
-  pdfUrl String? // URL al PDF en Cloudflare R2
-
-  // Estado
-  pagado    Boolean   @default(false)
+  estado    String   @default("borrador")
+  pagado    Boolean  @default(false)
   fechaPago DateTime?
 
-  // Timestamps
+  pdfUrl      String?
+  previredUrl String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relaciones
   trabajador Trabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
 
   @@unique([trabajadorId, mes, anio])
-  @@index([trabajadorId])
+  @@index([trabajadorId, anio, mes])
   @@map("liquidaciones")
 }
 
-// ============================================
-// 10. DECLARACIONES F29
-// ============================================
+// ============================================================
+// 18. DECLARACIONES F29
+// ============================================================
 model DeclaracionF29 {
   id        String @id @default(uuid())
   negocioId String
 
-  // Periodo
-  mes  Int // 1-12
+  mes  Int
   anio Int
 
-  // Ventas
-  ventasAfectas Int
-  ventasExentas Int @default(0)
-  ivaDebito     Int
+  ventasAfectas     Int
+  ventasExentas     Int @default(0)
+  ventasExportacion Int @default(0)
+  totalVentas       Int
 
-  // Compras
-  comprasAfectas Int
-  comprasExentas Int @default(0)
-  ivaCredito     Int
+  ivaDebito          Int
+  notasCreditoVentas Int @default(0)
+  ivaNotasCredito    Int @default(0)
 
-  // Cálculos
-  ivaDeterminado Int // débito - crédito
-  ppm            Int // 0.25% ventas netas
-  totalAPagar    Int
+  comprasAfectas      Int
+  comprasExentas      Int @default(0)
+  comprasSupermercado Int @default(0)
+  totalCompras        Int
 
-  // Estado
-  estado            String    @default("borrador") // borrador, presentado
+  ivaCredito          Int
+  notasCreditoCompras Int @default(0)
+  ivaNotasCreditoComp Int @default(0)
+  notasDebitoCompras  Int @default(0)
+  ivaNotasDebitoComp  Int @default(0)
+
+  ivaDeterminado       Int
+  retencionIvaTerceros Int @default(0)
+
+  ppmBase  Int
+  ppmTasa  Int @default(25)
+  ppmMonto Int
+
+  totalAPagar Int
+
+  estado            String    @default("borrador")
   fechaPresentacion DateTime?
-  folio             String? // Folio SII
+  folio             String?
+  pdfUrl            String?
 
-  // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relaciones
   negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Cascade)
 
   @@unique([negocioId, mes, anio])
-  @@index([negocioId])
+  @@index([negocioId, estado])
   @@map("declaraciones_f29")
 }
 
-// ============================================
-// 11. DECLARACIONES F22
-// ============================================
+// ============================================================
+// 19. DECLARACIONES F22
+// ============================================================
 model DeclaracionF22 {
   id        String @id @default(uuid())
   negocioId String
 
-  // Año tributario
   anio Int
 
-  // Ingresos
-  ingresosTotal    Int
-  gastosDeducibles Int @default(0)
-  rentaLiquida     Int
+  ventasAnuales    Int
+  gastosAnuales    Int
+  rentaPresunta    Int
+  rentaEfectiva    Int?
+  rentaDeterminada Int
 
-  // Impuestos
+  tasaImpuesto        Int @default(2500)
   impuestoDeterminado Int
-  ppmPagado           Int // PPM acumulado año
-  creditosImputables  Int @default(0)
 
-  // Resultado
-  impuestoAPagar Int // Puede ser negativo (devolución)
+  ppmAcumuladoAnual       Int
+  retencionesTrabajadores Int @default(0)
+  otrosCreditos           Int @default(0)
+  totalCreditos           Int
 
-  // Estado
+  impuestoAPagar Int
+  resultado      String
+  montoResultado Int
+
   estado            String    @default("borrador")
   fechaPresentacion DateTime?
   folio             String?
+  pdfUrl            String?
 
-  // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relaciones
   negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Cascade)
 
   @@unique([negocioId, anio])
-  @@index([negocioId])
+  @@index([negocioId, estado])
   @@map("declaraciones_f22")
 }
 
-// ============================================
-// 12. ALERTAS
-// ============================================
+// ============================================================
+// 20. ALERTAS
+// ============================================================
 model Alerta {
   id        String @id @default(uuid())
   negocioId String
 
-  tipo    String // stock_bajo, visita_proveedor, f29_vencimiento, anomalia_ventas
-  titulo  String
-  mensaje String
+  tipo      String
+  // stock_bajo | f29_vencimiento | f22_vencimiento
+  // certificado_vencimiento | folios_agotando | folios_agotados
+  // caf_vencimiento | libro_cv_pendiente | dte_rechazado
 
-  prioridad String  @default("media") // baja, media, alta, urgente
+  titulo    String
+  mensaje   String
+  prioridad String  @default("media")
   leida     Boolean @default(false)
   resuelta  Boolean @default(false)
+  metadata  Json?
 
-  // Metadata
-  metadata Json? // Info adicional según tipo alerta
-
-  // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relaciones
   negocio Negocio @relation(fields: [negocioId], references: [id], onDelete: Cascade)
 
-  @@index([negocioId, leida])
+  @@index([negocioId, leida, prioridad])
   @@map("alertas")
 }
 
-// ============================================
-// 13. PAGOS (Suscripciones Mercado Pago)
-// ============================================
+// ============================================================
+// 21. PAGOS (Suscripción MiConta)
+// ============================================================
 model Pago {
   id        String @id @default(uuid())
   usuarioId String
 
-  // Mercado Pago
-  mpPreapprovalId String? @unique // ID suscripción MP
-  mpPaymentId     String? // ID pago específico
+  mpPreapprovalId String? @unique
+  mpPaymentId     String?
 
-  // Datos pago
   monto      Int
-  estado     String // pending, approved, rejected, cancelled
+  estado     String
   metodoPago String?
 
-  // Periodo
   mes  Int
   anio Int
 
-  // Timestamps
   fechaPago DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  // Relaciones
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
-  @@index([usuarioId])
+  @@index([usuarioId, estado])
   @@map("pagos")
 }

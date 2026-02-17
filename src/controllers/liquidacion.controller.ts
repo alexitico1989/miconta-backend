@@ -2,30 +2,26 @@ import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import { validarMes, validarAnio } from '../utils/validators';
 
-// Porcentajes 2026 (actualizar según normativa)
 const PORCENTAJES = {
-  AFP: 0.1,           // 10%
-  SALUD: 0.07,        // 7%
-  CESANTIA_TRABAJADOR: 0.006,  // 0.6%
-  CESANTIA_EMPLEADOR: 0.024,   // 2.4%
-  SIS: 0.0077         // 0.77% (aproximado)
+  AFP:                 0.1,
+  SALUD:               0.07,
+  CESANTIA_TRABAJADOR: 0.006,
+  CESANTIA_EMPLEADOR:  0.024,
+  SIS:                 0.0077
 };
 
-const UF_2026 = 37800; // Actualizar según valor real
-const UTM_2026 = 65000; // Actualizar según valor real
+const UTM_2026 = 65000;
 
-// Tabla impuesto único 2026 (simplificada)
 const TABLA_IMPUESTO_UNICO = [
-  { desde: 0, hasta: 13.5 * UTM_2026, tasa: 0, rebaja: 0 },
-  { desde: 13.5 * UTM_2026, hasta: 30 * UTM_2026, tasa: 0.04, rebaja: 0.04 * 13.5 * UTM_2026 },
-  { desde: 30 * UTM_2026, hasta: 50 * UTM_2026, tasa: 0.08, rebaja: 0.08 * 30 * UTM_2026 - (0.04 * 13.5 * UTM_2026) },
-  { desde: 50 * UTM_2026, hasta: 70 * UTM_2026, tasa: 0.135, rebaja: 0.135 * 50 * UTM_2026 - (0.08 * 30 * UTM_2026 - (0.04 * 13.5 * UTM_2026)) },
-  { desde: 70 * UTM_2026, hasta: 90 * UTM_2026, tasa: 0.23, rebaja: 0.23 * 70 * UTM_2026 },
-  { desde: 90 * UTM_2026, hasta: 120 * UTM_2026, tasa: 0.304, rebaja: 0.304 * 90 * UTM_2026 },
-  { desde: 120 * UTM_2026, hasta: Infinity, tasa: 0.35, rebaja: 0.35 * 120 * UTM_2026 }
+  { desde: 0,               hasta: 13.5 * UTM_2026, tasa: 0,     rebaja: 0 },
+  { desde: 13.5 * UTM_2026, hasta: 30 * UTM_2026,   tasa: 0.04,  rebaja: 0.04 * 13.5 * UTM_2026 },
+  { desde: 30 * UTM_2026,   hasta: 50 * UTM_2026,   tasa: 0.08,  rebaja: 0.08 * 30 * UTM_2026 - (0.04 * 13.5 * UTM_2026) },
+  { desde: 50 * UTM_2026,   hasta: 70 * UTM_2026,   tasa: 0.135, rebaja: 0.135 * 50 * UTM_2026 - (0.08 * 30 * UTM_2026 - (0.04 * 13.5 * UTM_2026)) },
+  { desde: 70 * UTM_2026,   hasta: 90 * UTM_2026,   tasa: 0.23,  rebaja: 0.23 * 70 * UTM_2026 },
+  { desde: 90 * UTM_2026,   hasta: 120 * UTM_2026,  tasa: 0.304, rebaja: 0.304 * 90 * UTM_2026 },
+  { desde: 120 * UTM_2026,  hasta: Infinity,          tasa: 0.35,  rebaja: 0.35 * 120 * UTM_2026 }
 ];
 
-// CALCULAR IMPUESTO ÚNICO
 function calcularImpuestoUnico(baseImponible: number): number {
   for (const tramo of TABLA_IMPUESTO_UNICO) {
     if (baseImponible >= tramo.desde && baseImponible < tramo.hasta) {
@@ -41,134 +37,90 @@ export const generarLiquidacion = async (req: Request, res: Response) => {
     const userId = req.userId!;
     const { trabajadorId, mes, anio, horasExtra, bonos, otrosDescuentos } = req.body;
 
-    // Validar
     if (!trabajadorId || !mes || !anio) {
-      return res.status(400).json({
-        error: 'Faltan campos requeridos: trabajadorId, mes, anio'
-      });
+      return res.status(400).json({ error: 'Faltan campos requeridos: trabajadorId, mes, anio' });
     }
 
     const validacionMes = validarMes(mes);
-    if (!validacionMes.valido) {
-      return res.status(400).json({
-        error: validacionMes.error
-      });
-    }
+    if (!validacionMes.valido) return res.status(400).json({ error: validacionMes.error });
 
     const validacionAnio = validarAnio(anio);
-    if (!validacionAnio.valido) {
-      return res.status(400).json({
-        error: validacionAnio.error
-      });
-    }
+    if (!validacionAnio.valido) return res.status(400).json({ error: validacionAnio.error });
 
-    // Validar montos opcionales
-    if (horasExtra !== undefined && horasExtra < 0) {
-      return res.status(400).json({
-        error: 'Horas extra no puede ser negativo'
-      });
-    }
+    if (horasExtra !== undefined && horasExtra < 0)
+      return res.status(400).json({ error: 'Horas extra no puede ser negativo' });
+    if (bonos !== undefined && bonos < 0)
+      return res.status(400).json({ error: 'Bonos no puede ser negativo' });
+    if (otrosDescuentos !== undefined && otrosDescuentos < 0)
+      return res.status(400).json({ error: 'Otros descuentos no puede ser negativo' });
 
-    if (bonos !== undefined && bonos < 0) {
-      return res.status(400).json({
-        error: 'Bonos no puede ser negativo'
-      });
-    }
-
-    if (otrosDescuentos !== undefined && otrosDescuentos < 0) {
-      return res.status(400).json({
-        error: 'Otros descuentos no puede ser negativo'
-      });
-    }
-
-    // Verificar trabajador
     const trabajador = await prisma.trabajador.findUnique({
       where: { id: trabajadorId },
-      include: {
-        negocio: true
-      }
+      include: { negocio: true }
     });
 
-    if (!trabajador) {
-      return res.status(404).json({
-        error: 'Trabajador no encontrado'
-      });
-    }
+    if (!trabajador) return res.status(404).json({ error: 'Trabajador no encontrado' });
+    if (trabajador.negocio.usuarioId !== userId) return res.status(403).json({ error: 'No tienes permiso' });
 
-    if (trabajador.negocio.usuarioId !== userId) {
-      return res.status(403).json({
-        error: 'No tienes permiso'
-      });
-    }
-
-    // Verificar que no exista liquidación para ese periodo
     const liquidacionExistente = await prisma.liquidacion.findUnique({
-      where: {
-        trabajadorId_mes_anio: {
-          trabajadorId,
-          mes,
-          anio
-        }
-      }
+      where: { trabajadorId_mes_anio: { trabajadorId, mes, anio } }
     });
 
-    if (liquidacionExistente) {
-      return res.status(400).json({
-        error: 'Ya existe una liquidación para este periodo'
-      });
-    }
+    if (liquidacionExistente)
+      return res.status(400).json({ error: 'Ya existe una liquidación para este periodo' });
 
     // CALCULAR HABERES
-    const sueldoBase = trabajador.sueldoBase;
-    const horasExtraValor = horasExtra || 0;
-    const bonosValor = bonos || 0;
-    const totalHaberes = sueldoBase + horasExtraValor + bonosValor;
+    const sueldoBase         = trabajador.sueldoBase;
+    const cantidadHorasExtra = horasExtra || 0;
+    const bonosValor         = bonos || 0;
+    const valorHoraExtra     = Math.round((sueldoBase / 180) * 1.5);
+    const montoHorasExtra    = cantidadHorasExtra * valorHoraExtra;
+    const totalHaberes       = sueldoBase + montoHorasExtra + bonosValor;
 
-    // CALCULAR DESCUENTOS LEGALES
-    const afp = Math.round(totalHaberes * PORCENTAJES.AFP);
-    const salud = Math.round(totalHaberes * PORCENTAJES.SALUD);
-    const cesantia = Math.round(totalHaberes * PORCENTAJES.CESANTIA_TRABAJADOR);
-    
-    // Base imponible para impuesto único
-    const baseImponible = totalHaberes - afp - salud - cesantia;
-    const impuestoUnico = calcularImpuestoUnico(baseImponible);
+    // DESCUENTOS — nombres exactos del schema Prisma
+    const montoAfp       = Math.round(totalHaberes * PORCENTAJES.AFP);
+    const montoSalud     = Math.round(totalHaberes * PORCENTAJES.SALUD);
+    const montoCesantia  = Math.round(totalHaberes * PORCENTAJES.CESANTIA_TRABAJADOR);
+    const baseImponible  = totalHaberes - montoAfp - montoSalud - montoCesantia;
+    const impuestoUnico  = calcularImpuestoUnico(baseImponible);
 
-    const totalDescuentos = afp + salud + cesantia + impuestoUnico + (otrosDescuentos || 0);
+    // Aporte empleador
+    const cesantiaEmp    = Math.round(totalHaberes * PORCENTAJES.CESANTIA_EMPLEADOR);
+    const sis            = Math.round(totalHaberes * PORCENTAJES.SIS);
+    const costoEmpleador = totalHaberes + cesantiaEmp + sis;
 
-    // SUELDO LÍQUIDO
-    const sueldoLiquido = totalHaberes - totalDescuentos;
+    const totalDescuentos = montoAfp + montoSalud + montoCesantia + impuestoUnico + (otrosDescuentos || 0);
+    const sueldoLiquido   = totalHaberes - totalDescuentos;
 
-    // Crear liquidación
+    // Determinar si salud va a saludFonasa o saludIsapre
+    const esIsapre = trabajador.isapre != null;
+
     const liquidacion = await prisma.liquidacion.create({
       data: {
         trabajadorId,
         mes,
         anio,
         sueldoBase,
-        horasExtra: horasExtraValor,
-        bonos: bonosValor,
+        horasExtraCantidad: cantidadHorasExtra,
+        horasExtraMonto:    montoHorasExtra,
+        bonos:              bonosValor,
         totalHaberes,
-        afp,
-        salud,
-        cesantia,
+        afp:            montoAfp,
+        ...(esIsapre ? { saludIsapre: montoSalud } : { saludFonasa: montoSalud }),
+        seguroCesantia: montoCesantia,
         impuestoUnico,
         otrosDescuentos: otrosDescuentos || 0,
         totalDescuentos,
-        sueldoLiquido
+        sueldoLiquido,
+        costoEmpleador,
       }
     });
 
-    res.status(201).json({
-      message: 'Liquidación generada exitosamente',
-      liquidacion
-    });
+    res.status(201).json({ message: 'Liquidación generada exitosamente', liquidacion });
 
   } catch (error) {
     console.error('Error en generarLiquidacion:', error);
-    res.status(500).json({
-      error: 'Error al generar liquidación',
-      detalle: error instanceof Error ? error.message : 'Error desconocido'
-    });
+    res.status(500).json({ error: 'Error al generar liquidación', detalle: error instanceof Error ? error.message : 'Error desconocido' });
   }
 };
 
@@ -178,63 +130,35 @@ export const getLiquidaciones = async (req: Request, res: Response) => {
     const userId = req.userId!;
     const { mes, anio, trabajadorId, limit, offset } = req.query;
 
-    // Obtener negocio
-    const negocio = await prisma.negocio.findUnique({
-      where: { usuarioId: userId }
-    });
+    const negocio = await prisma.negocio.findUnique({ where: { usuarioId: userId } });
+    if (!negocio) return res.status(404).json({ error: 'Negocio no encontrado' });
 
-    if (!negocio) {
-      return res.status(404).json({
-        error: 'Negocio no encontrado'
-      });
-    }
-
-    // Construir filtros
-    const where: any = {
-      trabajador: {
-        negocioId: negocio.id
-      }
-    };
+    const where: any = { trabajador: { negocioId: negocio.id } };
 
     if (mes) {
       const mesNum = parseInt(mes as string);
-      const validacionMes = validarMes(mesNum);
-      if (!validacionMes.valido) {
-        return res.status(400).json({
-          error: validacionMes.error
-        });
-      }
+      const v = validarMes(mesNum);
+      if (!v.valido) return res.status(400).json({ error: v.error });
       where.mes = mesNum;
     }
 
     if (anio) {
       const anioNum = parseInt(anio as string);
-      const validacionAnio = validarAnio(anioNum);
-      if (!validacionAnio.valido) {
-        return res.status(400).json({
-          error: validacionAnio.error
-        });
-      }
+      const v = validarAnio(anioNum);
+      if (!v.valido) return res.status(400).json({ error: v.error });
       where.anio = anioNum;
     }
 
     if (trabajadorId) where.trabajadorId = trabajadorId as string;
 
-    // Paginación
-    const take = limit ? parseInt(limit as string) : 50;
+    const take = limit  ? parseInt(limit as string)  : 50;
     const skip = offset ? parseInt(offset as string) : 0;
 
-    // Obtener liquidaciones
     const [liquidaciones, total] = await Promise.all([
       prisma.liquidacion.findMany({
         where,
-        include: {
-          trabajador: true
-        },
-        orderBy: [
-          { anio: 'desc' },
-          { mes: 'desc' }
-        ],
+        include: { trabajador: true },
+        orderBy: [{ anio: 'desc' }, { mes: 'desc' }],
         take,
         skip
       }),
@@ -243,20 +167,12 @@ export const getLiquidaciones = async (req: Request, res: Response) => {
 
     res.json({
       liquidaciones,
-      paginacion: {
-        total,
-        limit: take,
-        offset: skip,
-        hasMore: skip + liquidaciones.length < total
-      }
+      paginacion: { total, limit: take, offset: skip, hasMore: skip + liquidaciones.length < total }
     });
 
   } catch (error) {
     console.error('Error en getLiquidaciones:', error);
-    res.status(500).json({
-      error: 'Error al obtener liquidaciones',
-      detalle: error instanceof Error ? error.message : 'Error desconocido'
-    });
+    res.status(500).json({ error: 'Error al obtener liquidaciones', detalle: error instanceof Error ? error.message : 'Error desconocido' });
   }
 };
 
@@ -266,88 +182,67 @@ export const generarArchivoPrevired = async (req: Request, res: Response) => {
     const userId = req.userId!;
     const { mes, anio } = req.body;
 
-    // Validar
-    if (!mes || !anio) {
-      return res.status(400).json({
-        error: 'Mes y año son requeridos'
-      });
-    }
+    if (!mes || !anio) return res.status(400).json({ error: 'Mes y año son requeridos' });
 
     const validacionMes = validarMes(mes);
-    if (!validacionMes.valido) {
-      return res.status(400).json({
-        error: validacionMes.error
-      });
-    }
+    if (!validacionMes.valido) return res.status(400).json({ error: validacionMes.error });
 
     const validacionAnio = validarAnio(anio);
-    if (!validacionAnio.valido) {
-      return res.status(400).json({
-        error: validacionAnio.error
-      });
-    }
+    if (!validacionAnio.valido) return res.status(400).json({ error: validacionAnio.error });
 
-    // Obtener negocio
-    const negocio = await prisma.negocio.findUnique({
-      where: { usuarioId: userId }
-    });
+    const negocio = await prisma.negocio.findUnique({ where: { usuarioId: userId } });
+    if (!negocio) return res.status(404).json({ error: 'Negocio no encontrado' });
 
-    if (!negocio) {
-      return res.status(404).json({
-        error: 'Negocio no encontrado'
-      });
-    }
-
-    // Obtener liquidaciones del periodo
+    // Select explícito con los campos reales del schema
     const liquidaciones = await prisma.liquidacion.findMany({
       where: {
         mes,
         anio,
-        trabajador: {
-          negocioId: negocio.id,
-          activo: true
-        }
+        trabajador: { negocioId: negocio.id, activo: true }
       },
-      include: {
-        trabajador: true
+      select: {
+        totalHaberes:   true,
+        afp:            true,
+        saludFonasa:    true,
+        saludIsapre:    true,
+        seguroCesantia: true,
+        impuestoUnico:  true,
+        trabajador: {
+          select: {
+            rut:             true,
+            nombre:          true,
+            apellidoPaterno: true,
+            apellidoMaterno: true,
+          }
+        }
       }
     });
 
-    if (liquidaciones.length === 0) {
-      return res.status(404).json({
-        error: 'No hay liquidaciones para este periodo'
-      });
-    }
+    if (liquidaciones.length === 0)
+      return res.status(404).json({ error: 'No hay liquidaciones para este periodo' });
 
-    // GENERAR ARCHIVO TXT PREVIRED
-    // Formato simplificado (actualizar según especificación oficial)
     let contenidoTxt = '';
-
-    // Línea 1: Encabezado
     contenidoTxt += `1|${negocio.rutNegocio || ''}|${mes}|${anio}|\n`;
 
-    // Líneas 2+: Trabajadores
-    liquidaciones.forEach((liq, index) => {
-      const linea = [
-        '2', // Tipo línea
+    liquidaciones.forEach(liq => {
+      const montoSalud = (liq.saludFonasa ?? 0) + (liq.saludIsapre ?? 0);
+      contenidoTxt += [
+        '2',
         liq.trabajador.rut,
         liq.trabajador.nombre,
         liq.trabajador.apellidoPaterno,
-        liq.trabajador.apellidoMaterno,
+        liq.trabajador.apellidoMaterno || '',
         liq.totalHaberes,
         liq.afp,
-        liq.salud,
-        liq.cesantia,
+        montoSalud,
+        liq.seguroCesantia,
         liq.impuestoUnico
-      ].join('|');
-      
-      contenidoTxt += linea + '\n';
+      ].join('|') + '\n';
     });
 
-    // Última línea: Totales
     const totalHaberes = liquidaciones.reduce((sum, l) => sum + l.totalHaberes, 0);
-    const totalAFP = liquidaciones.reduce((sum, l) => sum + l.afp, 0);
-    const totalSalud = liquidaciones.reduce((sum, l) => sum + l.salud, 0);
+    const totalAFP     = liquidaciones.reduce((sum, l) => sum + l.afp, 0);
+    const totalSalud   = liquidaciones.reduce((sum, l) => sum + (l.saludFonasa ?? 0) + (l.saludIsapre ?? 0), 0);
 
     contenidoTxt += `3|${liquidaciones.length}|${totalHaberes}|${totalAFP}|${totalSalud}|\n`;
 
@@ -357,10 +252,7 @@ export const generarArchivoPrevired = async (req: Request, res: Response) => {
 
   } catch (error) {
     console.error('Error en generarArchivoPrevired:', error);
-    res.status(500).json({
-      error: 'Error al generar archivo Previred',
-      detalle: error instanceof Error ? error.message : 'Error desconocido'
-    });
+    res.status(500).json({ error: 'Error al generar archivo Previred', detalle: error instanceof Error ? error.message : 'Error desconocido' });
   }
 };
 
@@ -368,52 +260,26 @@ export const generarArchivoPrevired = async (req: Request, res: Response) => {
 export const marcarComoPagada = async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const id = req.params.id as string;
+    const id     = req.params.id as string;
     const { fechaPago } = req.body;
 
-    // Verificar liquidación
     const liquidacion = await prisma.liquidacion.findUnique({
       where: { id },
-      include: {
-        trabajador: {
-          include: {
-            negocio: true
-          }
-        }
-      }
+      include: { trabajador: { include: { negocio: true } } }
     });
 
-    if (!liquidacion) {
-      return res.status(404).json({
-        error: 'Liquidación no encontrada'
-      });
-    }
+    if (!liquidacion) return res.status(404).json({ error: 'Liquidación no encontrada' });
+    if (liquidacion.trabajador.negocio.usuarioId !== userId) return res.status(403).json({ error: 'No tienes permiso' });
 
-    if (liquidacion.trabajador.negocio.usuarioId !== userId) {
-      return res.status(403).json({
-        error: 'No tienes permiso'
-      });
-    }
-
-    // Marcar como pagada
     const liquidacionActualizada = await prisma.liquidacion.update({
       where: { id },
-      data: {
-        pagado: true,
-        fechaPago: fechaPago ? new Date(fechaPago) : new Date()
-      }
+      data: { pagado: true, fechaPago: fechaPago ? new Date(fechaPago) : new Date() }
     });
 
-    res.json({
-      message: 'Liquidación marcada como pagada',
-      liquidacion: liquidacionActualizada
-    });
+    res.json({ message: 'Liquidación marcada como pagada', liquidacion: liquidacionActualizada });
 
   } catch (error) {
     console.error('Error en marcarComoPagada:', error);
-    res.status(500).json({
-      error: 'Error al marcar liquidación como pagada',
-      detalle: error instanceof Error ? error.message : 'Error desconocido'
-    });
+    res.status(500).json({ error: 'Error al marcar liquidación como pagada', detalle: error instanceof Error ? error.message : 'Error desconocido' });
   }
 };
