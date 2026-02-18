@@ -563,7 +563,7 @@ export const registrarNotaCompra = async (req: Request, res: Response) => {
     const notaContable = await prisma.notaContable.create({
       data: {
         tipo,
-        transaccionId,
+        transaccionId,  // Ahora permite múltiples notas por transacción
         monto,
         motivo: motivo.trim(),
         categoria: tipo === 'nota_credito' ? 'devolucion_compra' : 'recargo_compra',
@@ -577,7 +577,7 @@ export const registrarNotaCompra = async (req: Request, res: Response) => {
     const montoNetoAjustado = tipo === 'nota_credito' ? -montoNeto : montoNeto;
     const montoIvaAjustado = tipo === 'nota_credito' ? -montoIva : montoIva;
 
-    await prisma.transaccion.create({
+    const transaccionAjuste = await prisma.transaccion.create({
       data: {
         negocioId: transaccion.negocioId,
         tipo: tipoAjuste as any,
@@ -592,13 +592,13 @@ export const registrarNotaCompra = async (req: Request, res: Response) => {
         tipoDocumento: tipo === 'nota_credito' ? 'nota_credito' : 'nota_debito',
         esCorreccion: true,
         transaccionOriginalId: transaccionId,
-        correccionId: notaContable.id,
       }
     });
 
     res.json({
       message: `${tipo === 'nota_credito' ? 'Nota de Crédito' : 'Nota de Débito'} registrada exitosamente`,
       notaContable,
+      transaccionAjuste,
     });
 
   } catch (error) {
