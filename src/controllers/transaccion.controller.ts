@@ -571,12 +571,6 @@ export const registrarNotaCompra = async (req: Request, res: Response) => {
       }
     });
 
-    // Actualizar la transacción original para vincular la corrección
-    await prisma.transaccion.update({
-      where: { id: transaccionId },
-      data: { correccionId: notaContable.id }
-    });
-
     // Crear una transacción de ajuste contable
     const tipoAjuste = tipo === 'nota_credito' ? 'ajuste_credito_compra' : 'ajuste_debito_compra';
     const montoAjustado = tipo === 'nota_credito' ? -monto : monto;
