@@ -214,10 +214,6 @@ export const createTransaccion = async (req: Request, res: Response) => {
     });
 
     // ─── DTE AUTOMÁTICO ──────────────────────────────────────────
-    // Solo se emite DTE si:
-    // 1. Es una venta
-    // 2. El negocio tiene certificado digital activo
-    // Las compras nunca generan DTE (son documentos recibidos, no emitidos)
     let dteResultado: any = null;
     let dteError: string | null = null;
 
@@ -230,7 +226,6 @@ export const createTransaccion = async (req: Request, res: Response) => {
         }));
 
         if (tipoDocumento === 'factura' && clienteData) {
-          // Emitir factura electrónica (tipo 33)
           dteResultado = await emitirFactura({
             negocioId:         negocio.id,
             receptorRut:       clienteData.rut,
@@ -243,7 +238,6 @@ export const createTransaccion = async (req: Request, res: Response) => {
             metodoPago,
           });
         } else {
-          // Emitir boleta electrónica (tipo 39)
           dteResultado = await emitirBoleta({
             negocioId:   negocio.id,
             receptorRut: clienteData?.rut,
@@ -252,7 +246,6 @@ export const createTransaccion = async (req: Request, res: Response) => {
           });
         }
 
-        // Vincular el DTE a la transacción creada
         if (dteResultado?.documentoId) {
           await prisma.transaccion.update({
             where: { id: transaccion.id },
@@ -261,14 +254,11 @@ export const createTransaccion = async (req: Request, res: Response) => {
         }
 
       } catch (errorDte: any) {
-        // El DTE falló pero la transacción ya se guardó
-        // No revertimos — la venta quedó registrada, solo faltó el DTE
         console.error('Error al emitir DTE (transacción guardada):', errorDte.message);
         dteError = errorDte.message;
       }
     }
 
-    // ─── RESPUESTA ────────────────────────────────────────────────
     res.status(201).json({
       message: 'Transacción creada exitosamente',
       transaccion: {
@@ -281,7 +271,6 @@ export const createTransaccion = async (req: Request, res: Response) => {
           subtotal:       p.subtotal
         }))
       },
-      // Información del DTE emitido (si aplica)
       dte: dteResultado
         ? {
             emitido:     true,
@@ -290,7 +279,7 @@ export const createTransaccion = async (req: Request, res: Response) => {
             trackId:     dteResultado.trackId,
           }
         : tipo === 'venta' && !negocio.certificadoActivo
-          ? { emitido: false, razon: 'Sin certificado digital — configura el SII para emitir DTEs' }
+          ? { emitido: false, razon: 'Sin certificado digital' }
           : dteError
             ? { emitido: false, razon: dteError }
             : null
@@ -337,9 +326,9 @@ export const getTransacciones = async (req: Request, res: Response) => {
         where,
         include: {
           detalles:     { include: { producto: true } },
-          documentoSii: true,   // incluir DTE vinculado
-          cliente:      true,   // incluir cliente (para ventas)
-          proveedorRel: true,   // incluir proveedor (para compras)
+          documentoSii: true,
+          cliente:      true,
+          proveedorRel: true,
         },
         orderBy: { fecha: 'desc' },
         take,
@@ -518,6 +507,110 @@ export const deleteTransaccion = async (req: Request, res: Response) => {
     console.error('Error en deleteTransaccion:', error);
     res.status(500).json({
       error: 'Error al eliminar transacción',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
+    });
+  }
+};
+
+// Registrar Nota de Crédito/Débito recibida de proveedor (COMPRAS)
+export const registrarNotaCompra = async (req: Request, res: Response) => {
+  try {
+    const userId = req.userId!;
+    const transaccionId = req.params.id as string;
+    const { tipo, monto, numDocumento, motivo, fecha } = req.body;
+
+    // Validaciones
+    if (!tipo || (tipo !== 'nota_credito' && tipo !== 'nota_debito')) {
+      return res.status(400).json({ error: 'Tipo debe ser "nota_credito" o "nota_debito"' });
+    }
+
+    if (!monto || monto <= 0) {
+      return res.status(400).json({ error: 'Monto debe ser mayor a 0' });
+    }
+
+    if (!numDocumento || !numDocumento.trim()) {
+      return res.status(400).json({ error: 'Número de documento es requerido' });
+    }
+
+    if (!motivo || !motivo.trim()) {
+      return res.status(400).json({ error: 'Motivo es requerido' });
+    }
+
+    // Verificar que la transacción existe y pertenece al usuario
+    const transaccion = await prisma.transaccion.findUnique({
+      where: { id: transaccionId },
+      include: { negocio: true }
+    });
+
+    if (!transaccion) {
+      return res.status(404).json({ error: 'Transacción no encontrada' });
+    }
+
+    if (transaccion.negocio.usuarioId !== userId) {
+      return res.status(403).json({ error: 'No tienes permiso para modificar esta transacción' });
+    }
+
+    if (transaccion.tipo !== 'compra') {
+      return res.status(400).json({ error: 'Solo puedes registrar NC/ND en compras' });
+    }
+
+    // Calcular IVA (asumiendo 19%)
+    const tasaIva = 0.19;
+    const montoNeto = Math.round(monto / (1 + tasaIva));
+    const montoIva = monto - montoNeto;
+
+    // Crear la nota contable (corrección)
+    const notaContable = await prisma.notaContable.create({
+      data: {
+        tipo,
+        transaccionId,
+        monto,
+        motivo: motivo.trim(),
+        categoria: tipo === 'nota_credito' ? 'devolucion_compra' : 'recargo_compra',
+        negocioId: transaccion.negocioId,
+      }
+    });
+
+    // Actualizar la transacción original para vincular la corrección
+    await prisma.transaccion.update({
+      where: { id: transaccionId },
+      data: { correccionId: notaContable.id }
+    });
+
+    // Crear una transacción de ajuste contable
+    const tipoAjuste = tipo === 'nota_credito' ? 'ajuste_credito_compra' : 'ajuste_debito_compra';
+    const montoAjustado = tipo === 'nota_credito' ? -monto : monto;
+    const montoNetoAjustado = tipo === 'nota_credito' ? -montoNeto : montoNeto;
+    const montoIvaAjustado = tipo === 'nota_credito' ? -montoIva : montoIva;
+
+    await prisma.transaccion.create({
+      data: {
+        negocioId: transaccion.negocioId,
+        tipo: tipoAjuste as any,
+        fecha: fecha ? new Date(fecha) : new Date(),
+        montoTotal: montoAjustado,
+        montoNeto: montoNetoAjustado,
+        montoIva: montoIvaAjustado,
+        exento: false,
+        descripcion: `${tipo === 'nota_credito' ? 'NC' : 'ND'} - ${motivo.trim()}`,
+        numDocumento: numDocumento.trim(),
+        proveedorId: transaccion.proveedorId,
+        tipoDocumento: tipo === 'nota_credito' ? 'nota_credito' : 'nota_debito',
+        esCorreccion: true,
+        transaccionOriginalId: transaccionId,
+        correccionId: notaContable.id,
+      }
+    });
+
+    res.json({
+      message: `${tipo === 'nota_credito' ? 'Nota de Crédito' : 'Nota de Débito'} registrada exitosamente`,
+      notaContable,
+    });
+
+  } catch (error) {
+    console.error('Error en registrarNotaCompra:', error);
+    res.status(500).json({
+      error: 'Error al registrar la nota',
       detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }

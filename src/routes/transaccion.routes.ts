@@ -3,7 +3,8 @@ import {
   createTransaccion,
   getTransacciones,
   getResumenMensual,
-  deleteTransaccion
+  deleteTransaccion,
+  registrarNotaCompra
 } from '../controllers/transaccion.controller';
 import { authenticateToken } from '../middleware/auth.middleware';
 
@@ -20,6 +21,9 @@ router.get('/', getTransacciones);
 
 // GET /api/transacciones/resumen - Resumen mensual para F29
 router.get('/resumen', getResumenMensual);
+
+// POST /api/transacciones/:id/nota-compra - Registrar NC/ND de compra
+router.post('/:id/nota-compra', registrarNotaCompra);
 
 // DELETE /api/transacciones/:id - Eliminar transacción
 router.delete('/:id', deleteTransaccion);
