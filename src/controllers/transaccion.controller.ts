@@ -19,6 +19,7 @@ export const createTransaccion = async (req: Request, res: Response) => {
       exento,
       descripcion,
       proveedor,
+      proveedorId,    // ID del proveedor para compras
       cliente,
       clienteId,      // ID del cliente para facturas
       numDocumento,
@@ -137,6 +138,7 @@ export const createTransaccion = async (req: Request, res: Response) => {
           exento:        exento || false,
           descripcion,
           proveedor,
+          proveedorId:   proveedorId || null,
           cliente,
           clienteId:     clienteId || null,
           numDocumento,
@@ -334,8 +336,10 @@ export const getTransacciones = async (req: Request, res: Response) => {
       prisma.transaccion.findMany({
         where,
         include: {
-          detalles:    { include: { producto: true } },
+          detalles:     { include: { producto: true } },
           documentoSii: true,   // incluir DTE vinculado
+          cliente:      true,   // incluir cliente (para ventas)
+          proveedorRel: true,   // incluir proveedor (para compras)
         },
         orderBy: { fecha: 'desc' },
         take,
@@ -371,9 +375,11 @@ export const getTransaccionById = async (req: Request, res: Response) => {
     const transaccion = await prisma.transaccion.findUnique({
       where: { id },
       include: {
-        negocio:     true,
-        detalles:    { include: { producto: true } },
+        negocio:      true,
+        detalles:     { include: { producto: true } },
         documentoSii: true,
+        cliente:      true,
+        proveedorRel: true,
       }
     });
 
