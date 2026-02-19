@@ -599,8 +599,7 @@ export const registrarNotaCompra = async (req: Request, res: Response) => {
       }
     });
 
-    // Crear una transacción de ajuste contable
-    const tipoAjuste = tipo === 'nota_credito' ? 'ajuste_credito_compra' : 'ajuste_debito_compra';
+    // Crear transacción que aparecerá en Libro de Compras
     const montoAjustado = tipo === 'nota_credito' ? -monto : monto;
     const montoNetoAjustado = tipo === 'nota_credito' ? -montoNeto : montoNeto;
     const montoIvaAjustado = tipo === 'nota_credito' ? -montoIva : montoIva;
@@ -608,7 +607,7 @@ export const registrarNotaCompra = async (req: Request, res: Response) => {
     const transaccionAjuste = await prisma.transaccion.create({
       data: {
         negocioId: transaccion.negocioId,
-        tipo: tipoAjuste as any,
+        tipo: 'compra',  // Cambiado para que aparezca en libros
         fecha: fecha ? new Date(fecha) : new Date(),
         montoTotal: montoAjustado,
         montoNeto: montoNetoAjustado,
@@ -697,13 +696,13 @@ export const registrarNotaCreditoInterna = async (req: Request, res: Response) =
       }
     });
 
-    // Crear transacción de ajuste
+    // Crear transacción que aparecerá en Libro de Ventas
     const transaccionAjuste = await prisma.transaccion.create({
       data: {
         negocioId: transaccion.negocioId,
-        tipo: 'ajuste_credito_venta' as any,
+        tipo: 'venta',  // Cambiado para que aparezca en libros
         fecha: new Date(),
-        montoTotal: -monto,
+        montoTotal: -monto,  // Negativo para restar en el libro
         montoNeto: -montoNeto,
         montoIva: -montoIva,
         exento: false,
@@ -785,13 +784,13 @@ export const registrarNotaDebitoInterna = async (req: Request, res: Response) =>
       }
     });
 
-    // Crear transacción de ajuste
+    // Crear transacción que aparecerá en Libro de Ventas
     const transaccionAjuste = await prisma.transaccion.create({
       data: {
         negocioId: transaccion.negocioId,
-        tipo: 'ajuste_debito_venta' as any,
+        tipo: 'venta',  // Cambiado para que aparezca en libros
         fecha: new Date(),
-        montoTotal: monto,
+        montoTotal: monto,  // Positivo para sumar en el libro
         montoNeto: montoNeto,
         montoIva: montoIva,
         exento: false,
@@ -816,4 +815,4 @@ export const registrarNotaDebitoInterna = async (req: Request, res: Response) =>
       detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
-}; 
+};
