@@ -7,9 +7,10 @@
     "clean": "rm -rf dist",
     "prebuild": "npm run clean",
     "dev": "nodemon src/index.ts",
-    "build": "tsc",
+    "build": "prisma generate && tsc",
     "start": "node dist/index.js",
-    "prisma:generate": "prisma generate"
+    "prisma:generate": "prisma generate",
+    "postinstall": "prisma generate"
   },
   "engines": {
     "node": ">=18.0.0"
