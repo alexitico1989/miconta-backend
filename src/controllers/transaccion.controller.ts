@@ -816,4 +816,4 @@ export const registrarNotaDebitoInterna = async (req: Request, res: Response) =>
       detalle: error instanceof Error ? error.message : 'Error desconocido'
     });
   }
-};
+}; 
