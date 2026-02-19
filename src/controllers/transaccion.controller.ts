@@ -609,3 +609,183 @@ export const registrarNotaCompra = async (req: Request, res: Response) => {
     });
   }
 };
+
+// Registrar Nota de Crédito interna de VENTA (sin DTE del SII)
+export const registrarNotaCreditoInterna = async (req: Request, res: Response) => {
+  try {
+    const userId = req.userId!;
+    const { transaccionId, tipo, monto, motivo, categoria } = req.body;
+
+    // Validaciones
+    if (!transaccionId) {
+      return res.status(400).json({ error: 'ID de transacción es requerido' });
+    }
+
+    if (!monto || monto <= 0) {
+      return res.status(400).json({ error: 'Monto debe ser mayor a 0' });
+    }
+
+    if (!motivo || !motivo.trim()) {
+      return res.status(400).json({ error: 'Motivo es requerido' });
+    }
+
+    // Verificar que la transacción existe y pertenece al usuario
+    const transaccion = await prisma.transaccion.findUnique({
+      where: { id: transaccionId },
+      include: { negocio: true }
+    });
+
+    if (!transaccion) {
+      return res.status(404).json({ error: 'Transacción no encontrada' });
+    }
+
+    if (transaccion.negocio.usuarioId !== userId) {
+      return res.status(403).json({ error: 'No tienes permiso para modificar esta transacción' });
+    }
+
+    if (transaccion.tipo !== 'venta') {
+      return res.status(400).json({ error: 'Solo puedes emitir NC en ventas' });
+    }
+
+    if (monto > transaccion.montoTotal) {
+      return res.status(400).json({ error: 'El monto no puede ser mayor al monto total de la venta' });
+    }
+
+    // Calcular IVA
+    const tasaIva = 0.19;
+    const montoNeto = Math.round(monto / (1 + tasaIva));
+    const montoIva = monto - montoNeto;
+
+    // Crear la nota contable
+    const notaContable = await prisma.notaContable.create({
+      data: {
+        tipo: 'nota_credito',
+        transaccionId,
+        monto,
+        motivo: motivo.trim(),
+        categoria: categoria || 'correccion_venta',
+        negocioId: transaccion.negocioId,
+        estado: 'registrada',
+      }
+    });
+
+    // Crear transacción de ajuste
+    const transaccionAjuste = await prisma.transaccion.create({
+      data: {
+        negocioId: transaccion.negocioId,
+        tipo: 'ajuste_credito_venta' as any,
+        fecha: new Date(),
+        montoTotal: -monto,
+        montoNeto: -montoNeto,
+        montoIva: -montoIva,
+        exento: false,
+        descripcion: `NC - ${motivo.trim()}`,
+        tipoDocumento: 'nota_credito',
+        esCorreccion: true,
+        transaccionOriginalId: transaccionId,
+        clienteId: transaccion.clienteId,
+      }
+    });
+
+    res.json({
+      message: 'Nota de Crédito registrada exitosamente',
+      notaContable,
+      transaccionAjuste,
+    });
+
+  } catch (error) {
+    console.error('Error en registrarNotaCreditoInterna:', error);
+    res.status(500).json({
+      error: 'Error al registrar la Nota de Crédito',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
+    });
+  }
+};
+
+// Registrar Nota de Débito interna de VENTA (sin DTE del SII)
+export const registrarNotaDebitoInterna = async (req: Request, res: Response) => {
+  try {
+    const userId = req.userId!;
+    const { transaccionId, tipo, monto, motivo, categoria } = req.body;
+
+    // Validaciones
+    if (!transaccionId) {
+      return res.status(400).json({ error: 'ID de transacción es requerido' });
+    }
+
+    if (!monto || monto <= 0) {
+      return res.status(400).json({ error: 'Monto debe ser mayor a 0' });
+    }
+
+    if (!motivo || !motivo.trim()) {
+      return res.status(400).json({ error: 'Motivo es requerido' });
+    }
+
+    // Verificar que la transacción existe y pertenece al usuario
+    const transaccion = await prisma.transaccion.findUnique({
+      where: { id: transaccionId },
+      include: { negocio: true }
+    });
+
+    if (!transaccion) {
+      return res.status(404).json({ error: 'Transacción no encontrada' });
+    }
+
+    if (transaccion.negocio.usuarioId !== userId) {
+      return res.status(403).json({ error: 'No tienes permiso para modificar esta transacción' });
+    }
+
+    if (transaccion.tipo !== 'venta') {
+      return res.status(400).json({ error: 'Solo puedes emitir ND en ventas' });
+    }
+
+    // Calcular IVA
+    const tasaIva = 0.19;
+    const montoNeto = Math.round(monto / (1 + tasaIva));
+    const montoIva = monto - montoNeto;
+
+    // Crear la nota contable
+    const notaContable = await prisma.notaContable.create({
+      data: {
+        tipo: 'nota_debito',
+        transaccionId,
+        monto,
+        motivo: motivo.trim(),
+        categoria: categoria || 'cargo_adicional_venta',
+        negocioId: transaccion.negocioId,
+        estado: 'registrada',
+      }
+    });
+
+    // Crear transacción de ajuste
+    const transaccionAjuste = await prisma.transaccion.create({
+      data: {
+        negocioId: transaccion.negocioId,
+        tipo: 'ajuste_debito_venta' as any,
+        fecha: new Date(),
+        montoTotal: monto,
+        montoNeto: montoNeto,
+        montoIva: montoIva,
+        exento: false,
+        descripcion: `ND - ${motivo.trim()}`,
+        tipoDocumento: 'nota_debito',
+        esCorreccion: true,
+        transaccionOriginalId: transaccionId,
+        clienteId: transaccion.clienteId,
+      }
+    });
+
+    res.json({
+      message: 'Nota de Débito registrada exitosamente',
+      notaContable,
+      transaccionAjuste,
+    });
+
+  } catch (error) {
+    console.error('Error en registrarNotaDebitoInterna:', error);
+    res.status(500).json({
+      error: 'Error al registrar la Nota de Débito',
+      detalle: error instanceof Error ? error.message : 'Error desconocido'
+    });
+  }
+};

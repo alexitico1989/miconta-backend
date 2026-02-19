@@ -4,7 +4,9 @@ import {
   getTransacciones,
   getResumenMensual,
   deleteTransaccion,
-  registrarNotaCompra
+  registrarNotaCompra,
+  registrarNotaCreditoInterna,
+  registrarNotaDebitoInterna
 } from '../controllers/transaccion.controller';
 import { authenticateToken } from '../middleware/auth.middleware';
 
@@ -24,6 +26,12 @@ router.get('/resumen', getResumenMensual);
 
 // POST /api/transacciones/:id/nota-compra - Registrar NC/ND de compra
 router.post('/:id/nota-compra', registrarNotaCompra);
+
+// POST /api/transacciones/nota-credito-interna - Registrar NC de venta (interno)
+router.post('/nota-credito-interna', registrarNotaCreditoInterna);
+
+// POST /api/transacciones/nota-debito-interna - Registrar ND de venta (interno)
+router.post('/nota-debito-interna', registrarNotaDebitoInterna);
 
 // DELETE /api/transacciones/:id - Eliminar transacción
 router.delete('/:id', deleteTransaccion);
