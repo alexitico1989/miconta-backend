@@ -337,12 +337,28 @@ export const getTransacciones = async (req: Request, res: Response) => {
       prisma.transaccion.count({ where })
     ]);
 
-    const totalVentas  = transacciones.filter(t => t.tipo === 'venta').reduce((sum, t) => sum + t.montoTotal, 0);
-    const totalCompras = transacciones.filter(t => t.tipo === 'compra').reduce((sum, t) => sum + t.montoTotal, 0);
+    // Obtener notas contables para cada transacción
+    const transaccionesConNotas = await Promise.all(
+      transacciones.map(async (t) => {
+        const notasContables = await prisma.notaContable.findMany({
+          where: { transaccionId: t.id },
+          select: { id: true, tipo: true, monto: true, motivo: true, createdAt: true }
+        });
+        
+        return {
+          ...t,
+          notasContables,
+          tieneCorrecciones: notasContables.length > 0
+        };
+      })
+    );
+
+    const totalVentas  = transaccionesConNotas.filter(t => t.tipo === 'venta').reduce((sum, t) => sum + t.montoTotal, 0);
+    const totalCompras = transaccionesConNotas.filter(t => t.tipo === 'compra').reduce((sum, t) => sum + t.montoTotal, 0);
 
     res.json({
-      transacciones,
-      paginacion: { total, limit: take, offset: skip, hasMore: skip + transacciones.length < total },
+      transacciones: transaccionesConNotas,
+      paginacion: { total, limit: take, offset: skip, hasMore: skip + transaccionesConNotas.length < total },
       resumen:    { totalVentas, totalCompras, balance: totalVentas - totalCompras }
     });
 
@@ -380,7 +396,19 @@ export const getTransaccionById = async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'No tienes permiso para ver esta transacción' });
     }
 
-    res.json({ transaccion });
+    // Obtener notas contables de esta transacción
+    const notasContables = await prisma.notaContable.findMany({
+      where: { transaccionId: id },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    res.json({ 
+      transaccion: {
+        ...transaccion,
+        notasContables,
+        tieneCorrecciones: notasContables.length > 0
+      }
+    });
 
   } catch (error) {
     console.error('Error en getTransaccionById:', error);
