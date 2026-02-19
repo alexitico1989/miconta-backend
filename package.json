@@ -4,8 +4,10 @@
   "description": "Backend API para MiConta",
   "main": "dist/index.js",
   "scripts": {
+    "clean": "rm -rf dist",
+    "prebuild": "npm run clean",
     "dev": "nodemon src/index.ts",
-    "build": "prisma generate && tsc",
+    "build": "tsc",
     "start": "node dist/index.js",
     "prisma:generate": "prisma generate"
   },
