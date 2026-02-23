@@ -21,6 +21,7 @@ import dteRoutes         from './routes/dte.routes'
 import siiRoutes         from './routes/sii.routes'
 import libroCVRoutes from './routes/libroCV.routes'
 import pdfRoutes      from './routes/pdf.routes'
+import pagoRoutes from './routes/pagos';
 
 dotenv.config();
 
@@ -95,6 +96,7 @@ app.use('/api/dte',         dteRoutes)
 app.use('/api/sii',         siiRoutes)
 app.use('/api/libro-cv', libroCVRoutes)
 app.use('/api/pdf',      pdfRoutes)
+app.use('/api/pagos', pagoRoutes);
 
 // Iniciar servidor
 app.listen(PORT, () => {
